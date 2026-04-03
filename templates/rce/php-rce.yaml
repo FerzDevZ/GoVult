@@ -1,0 +1,20 @@
+id: php-rce-functions
+info:
+  name: PHP Remote Code Execution Functions Disclosure
+  author: FerzDevZ
+  severity: high
+  description: Detects potentially dangerous PHP functions exposed in the response.
+requests:
+  - method: GET
+    path:
+      - "?f=system"
+      - "?exec=passthru"
+    matchers:
+      - type: word
+        part: body
+        condition: or
+        words:
+          - "uid="
+          - "gid="
+          - "groups="
+          - "root:x:"

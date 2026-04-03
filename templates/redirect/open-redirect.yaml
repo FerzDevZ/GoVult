@@ -1,0 +1,21 @@
+id: open-redirect-vulnerability
+info:
+  name: Open Redirect Vulnerability Detection
+  author: FerzDevZ
+  severity: medium
+  description: Detects open redirects using common parameters and external URL payloads.
+requests:
+  - method: GET
+    path:
+      - "?url=http://example.com"
+      - "?next=http://example.com"
+      - "?redirect=http://example.com"
+      - "?dest=http://example.com"
+      - "?goto=http://example.com"
+    matchers:
+      - type: status
+        status: [301, 302, 307, 308]
+      - type: word
+        part: header
+        words:
+          - "Location: http://example.com"

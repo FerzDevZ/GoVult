@@ -1,0 +1,21 @@
+id: aws-metadata-disclosure
+info:
+  name: AWS Instance Metadata Service (IMDS) Disclosure
+  author: FerzDevZ
+  severity: critical
+  description: Detects access to the AWS Metadata service via SSRF.
+requests:
+  - method: GET
+    path:
+      - "/latest/meta-data/"
+      - "/latest/user-data/"
+      - "/latest/meta-data/iam/security-credentials/"
+    matchers:
+      - type: word
+        part: body
+        condition: or
+        words:
+          - "ami-id"
+          - "instance-id"
+          - "AccessKeyId"
+          - "SecretAccessKey"
