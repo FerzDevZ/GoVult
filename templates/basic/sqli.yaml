@@ -1,0 +1,25 @@
+id: sqli-error-detection
+info:
+  name: SQL Injection Error Detection
+  author: FerzDevZ
+  severity: critical
+  description: Detects SQL Injection by looking for common database error messages.
+requests:
+  - method: GET
+    path:
+      - "?id=1'"
+      - "?id=1%22"
+      - "?id=1\\"
+      - "?q=1'"
+    matchers:
+      - type: word
+        part: body
+        condition: or
+        words:
+          - "SQL syntax"
+          - "mysql_fetch_array"
+          - "ORA-00933"
+          - "PostgreSQL query failed"
+          - "sqlite3_prepare"
+          - "Driver Error"
+          - "Database error"

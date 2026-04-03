@@ -1,0 +1,16 @@
+id: xss-detection
+info:
+  name: Basic XSS Detection
+  author: FerzDevZ
+  severity: medium
+  description: Detects basic XSS through reflected script tag in the body.
+requests:
+  - method: GET
+    path:
+      - "?q=<script>alert(1)</script>"
+      - "/search?q=<script>alert(1)</script>"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "<script>alert(1)</script>"
