@@ -20,7 +20,7 @@ func main() {
 	templatePath := flag.String("t", "", "Path to template file or directory")
 	fullScan := flag.Bool("full", false, "Enable full scanning (Omniscient Mode)")
 	rateLimit := flag.Int("rl", 5, "Rate limit (Requests Per Second)")
-	concurrency := flag.Int("c", 20, "Number of concurrent workers (v5.1 Turbo)")
+	concurrency := flag.Int("c", 20, "Number of concurrent workers (v9.0 Turbo)")
 	htmlOutput := flag.String("o", "report.html", "Path to save HTML report")
 	tgToken := flag.String("tg-token", "", "Telegram Bot Token")
 	tgChat := flag.String("tg-chat", "", "Telegram Chat ID")
@@ -43,9 +43,9 @@ func main() {
 	var db *engine.Dashboard
 	if *dashboard {
 		db = engine.NewDashboard(*target)
-		db.Update("Initializing Turbo Engine...", 0, 1)
+		db.Update("Initializing Verified Engine (v9.0)...", 0, 1)
 	} else {
-		color.HiCyan("GoVult v5.1 - Turbo & CVE Edition")
+		color.HiCyan("GoVult v9.0 - Verified Auditor Edition")
 		color.Green("[*] Target locked: %s (Workers: %d)\n", *target, *concurrency)
 	}
 

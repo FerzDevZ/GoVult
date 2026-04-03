@@ -9,7 +9,13 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// Match implements "AND" logic among top-level matchers.
+// All matchers in the list must be true for the result to be matched.
 func Match(respBody string, statusCode int, matchers []template.Matcher) bool {
+	if len(matchers) == 0 {
+		return false
+	}
+
 	for _, matcher := range matchers {
 		matched := false
 		switch matcher.Type {
@@ -76,9 +82,11 @@ func Match(respBody string, statusCode int, matchers []template.Matcher) bool {
 			}
 		}
 
-		if matched {
-			return true
+		// If ANY matcher fails, the whole request fails the "AND" logic.
+		if !matched {
+			return false
 		}
 	}
-	return false
+	// All matchers were true.
+	return true
 }

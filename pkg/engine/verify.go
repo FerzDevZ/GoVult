@@ -1,9 +1,7 @@
 package engine
 
 import (
-	"context"
 	"io"
-	"net/http"
 	"strings"
 )
 

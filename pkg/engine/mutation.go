@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
-	"strings"
 )
 
 // MutatePayload generates various encoded versions for WAF bypass

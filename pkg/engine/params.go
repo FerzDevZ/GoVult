@@ -3,7 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
-	"net/http"
+	"io"
 	"net/url"
 	"strings"
 )
@@ -18,7 +18,7 @@ var HiddenParams = []string{
 // DiscoverParams brute-forces hidden URL parameters
 func (e *Engine) DiscoverParams(target string) ([]string, error) {
 	var found []string
-	u, err := url.Parse(target)
+	_, err := url.Parse(target)
 	if err != nil {
 		return nil, err
 	}
