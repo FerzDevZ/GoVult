@@ -26,13 +26,23 @@ func Crawl(target string) (*CrawlResult, error) {
 	}
 	defer res.Body.Close()
 
-	doc, err := goquery.NewDocumentFromReader(res.Body)
-	if err != nil {
-		return nil, err
-	}
+	body, _ := io.ReadAll(res.Body)
+	content := string(body)
 
+	// vX: Titan SPA Detection
+	isSPA := strings.Contains(content, "id=\"app\"") || strings.Contains(content, "id=\"root\"")
+	
 	result := &CrawlResult{}
 	baseURL, _ := url.Parse(target)
+
+	// Switch to Headless Mode if SPA is detected
+	if isSPA {
+		fmt.Printf("[TITAN] SPA detected! Switching to Headless Crawler (Chromedp)...\n")
+		hLinks, _ := HeadlessCrawl(target)
+		result.Links = append(result.Links, hLinks...)
+	}
+
+	doc, _ := goquery.NewDocumentFromReader(strings.NewReader(content))
 
 	// 1. Links (<a>)
 	doc.Find("a").Each(func(i int, s *goquery.Selection) {
@@ -54,7 +64,6 @@ func Crawl(target string) (*CrawlResult, error) {
 		jsURL, _ := url.Parse(src)
 		absJS := baseURL.ResolveReference(jsURL).String()
 		
-		// Fetch JS content and extract endpoints
 		endpoints, _ := ExtractJSLinks(absJS)
 		result.JSLinks = append(result.JSLinks, endpoints...)
 	})
@@ -81,7 +90,6 @@ func ExtractJSLinks(jsURL string) ([]string, error) {
 	content := string(body)
 
 	// Regex for relative paths: /path/to/api, ./path/to/api, ../path/to/api
-	// Go's regexp doesn't support backreferences (\1), so we simplify
 	re := regexp.MustCompile(`["'` + "`" + `](/?(?:[\w.-]+/?)+)["'` + "`" + `]`)
 	matches := re.FindAllStringSubmatch(content, -1)
 

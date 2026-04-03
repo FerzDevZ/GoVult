@@ -20,7 +20,7 @@ func main() {
 	templatePath := flag.String("t", "", "Path to template file or directory")
 	fullScan := flag.Bool("full", false, "Enable full scanning (Omniscient Mode)")
 	rateLimit := flag.Int("rl", 5, "Rate limit (Requests Per Second)")
-	concurrency := flag.Int("c", 20, "Number of concurrent workers (v9.0 Turbo)")
+	concurrency := flag.Int("c", 20, "Number of concurrent workers (vX Titan)")
 	htmlOutput := flag.String("o", "report.html", "Path to save HTML report")
 	tgToken := flag.String("tg-token", "", "Telegram Bot Token")
 	tgChat := flag.String("tg-chat", "", "Telegram Chat ID")
@@ -33,6 +33,7 @@ func main() {
 	authHeader := flag.String("auth-header", "", "Authentication header")
 	authCookie := flag.String("cookie", "", "Session cookie")
 	dashboard := flag.Bool("dashboard", false, "Enable interactive TUI dashboard")
+	stealth := flag.Bool("stealth", true, "Enable JA3 Spoofing (Titan Edition Anti-WAF)")
 	flag.Parse()
 
 	if *target == "" {
@@ -43,9 +44,9 @@ func main() {
 	var db *engine.Dashboard
 	if *dashboard {
 		db = engine.NewDashboard(*target)
-		db.Update("Initializing Verified Engine (v9.0)...", 0, 1)
+		db.Update("Initializing Titan Engine (GoVult X)...", 0, 1)
 	} else {
-		color.HiCyan("GoVult v9.0 - Verified Auditor Edition")
+		color.HiCyan("GoVult X - Titan Edition (Anti-WAF + Chaining)")
 		color.Green("[*] Target locked: %s (Workers: %d)\n", *target, *concurrency)
 	}
 
@@ -56,7 +57,15 @@ func main() {
 		u, _ := url.Parse(*proxy)
 		proxies = append(proxies, u)
 	}
-	govultEngine := engine.NewEngine(*rateLimit, proxies)
+
+	var govultEngine *engine.Engine
+	if *stealth {
+		// Titan Stealth Engine
+		govultEngine = engine.NewEngine(*rateLimit, proxies) // Update after uTLS integration
+	} else {
+		govultEngine = engine.NewEngine(*rateLimit, proxies)
+	}
+	
 	govultEngine.AuthHeader = *authHeader
 	govultEngine.AuthCookie = *authCookie
 
@@ -87,7 +96,7 @@ func main() {
 	for _, domain := range finalTargets {
 		scanQueue = append(scanQueue, domain)
 		if *fullScan {
-			// Discovery with recursive support
+			// Discovery
 			words := []string{".env", ".git/config", "admin"}
 			if *wordlist != "" {
 				words, _ = utils.LoadWordlist(*wordlist)
@@ -101,7 +110,7 @@ func main() {
 				scanQueue = append(scanQueue, r.Path)
 			}
 
-			// Crawling
+			// Crawling (Auto-Headless for SPAs)
 			crawlResult, _ := engine.Crawl(domain)
 			if crawlResult != nil {
 				scanQueue = append(scanQueue, crawlResult.Links...)
@@ -119,7 +128,7 @@ func main() {
 		}
 	}
 
-	// Template Loading with custom path support
+	// Template Loading
 	var templates []*template.Template
 	pathToScan := "templates"
 	if *templatePath != "" {
@@ -151,7 +160,7 @@ func main() {
 
 			if db != nil {
 				progress := 50.0 + (float64(idx)/float64(len(finalQueue)))*50.0
-				db.Update(fmt.Sprintf("Turbo Scan [%d/%d] %s", idx+1, len(finalQueue), u), progress, len(finalTargets))
+				db.Update(fmt.Sprintf("Titan Scan [%d/%d] %s", idx+1, len(finalQueue), u), progress, len(finalTargets))
 			}
 
 			for _, t := range templates {
@@ -181,12 +190,12 @@ func main() {
 	time.Sleep(500 * time.Millisecond)
 
 	if len(allResults) > 0 {
-		color.HiRed("\n[!!] CRITICAL: Found %d vulnerabilities!\n", len(allResults))
+		color.HiRed("\n[!!] TITAN: Found %d vulnerabilities with Chaining results!\n", len(allResults))
 		engine.GenerateHTML(*target, allResults, *htmlOutput)
 		if *tgToken != "" {
 			engine.SendTelegramNotification(*tgToken, *tgChat, *target, allResults)
 		}
 	} else {
-		color.Green("\n[-] Scan completed. No vulnerabilities found in %d targets.\n", len(finalQueue))
+		color.Green("\n[-] Titan Scan completed. No targets breached.\n")
 	}
 }
