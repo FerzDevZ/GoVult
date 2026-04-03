@@ -1,0 +1,21 @@
+id: php-deserialization
+info:
+  name: PHP Insecure Deserialization (unserialize)
+  author: FerzDevZ
+  severity: high
+  description: Detection for insecure unserialize() on PHP endpoints.
+
+requests:
+  - method: GET
+    path:
+      - "/query?data=O:8:\"stdClass\":0:{}"
+      - "/api/user?profile=O:8:\"stdClass\":1:{s:3:\"foo\";s:3:\"bar\";}"
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        part: body
+        words:
+          - "stdClass"
+        condition: and

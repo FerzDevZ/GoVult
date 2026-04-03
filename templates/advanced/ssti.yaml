@@ -1,0 +1,23 @@
+id: ssti-detector
+info:
+  name: Server-Side Template Injection (SSTI) Detector
+  author: FerzDevZ
+  severity: high
+  description: Detection for SSTI in various template engines like Twig, Jinja2, Smarty, and Handlebars.
+
+requests:
+  - method: GET
+    path:
+      - "/?search={{7*7}}"
+      - "/query?q=${7*7}"
+      - "/view?name=#{7*7}"
+      - "/?id=<%= 7*7 %>"
+    matchers:
+      - type: word
+        part: body
+        words:
+          - "49"
+        condition: and
+      - type: status
+        status:
+          - 200

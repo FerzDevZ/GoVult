@@ -20,7 +20,7 @@ func GenerateHTML(target string, results []Result, filename string) error {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GoVult Enterprise Audit Report</title>
+    <title>GoVult Verified Auditor Report</title>
     <style>
         :root {
             --bg: #0f172a;
@@ -30,7 +30,8 @@ func GenerateHTML(target string, results []Result, filename string) error {
             --high: #f97316;
             --medium: #eab308;
             --low: #3b82f6;
-            --accent: #8b5cf6;
+            --accent: #0ea5e9;
+            --verified: #10b981;
         }
         body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 40px; }
         .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--accent); padding-bottom: 20px; margin-bottom: 40px; }
@@ -40,27 +41,24 @@ func GenerateHTML(target string, results []Result, filename string) error {
         .vuln-card { background: var(--card); margin-bottom: 20px; border-radius: 12px; overflow: hidden; border: 1px solid #334155; transition: transform 0.2s; }
         .vuln-card:hover { transform: translateY(-5px); border-color: var(--accent); }
         .vuln-header { padding: 20px; display: flex; justify-content: space-between; align-items: center; }
-        .severity { padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
+        .severity { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
         .critical { background: var(--critical); }
-        .high { background: var(--high); }
-        .medium { background: var(--medium); }
-        .low { background: var(--low); }
+        .badge-verified { background: var(--verified); color: white; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 10px; }
         .vuln-body { padding: 20px; border-top: 1px solid #334155; background: #0f172a80; }
         .label { font-weight: bold; color: var(--accent); margin-top: 10px; display: block; }
+        .evidence { background: #0c0a09; color: #a8a29e; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid var(--verified); font-family: monospace; font-size: 13px; }
         .remediation { background: #064e3b; color: #6ee7b7; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #10b981; }
-        .tag { font-family: monospace; color: #94a3b8; }
-        .cvss { font-size: 14px; opacity: 0.8; }
     </style>
 </head>
 <body>
     <div class="header">
         <div>
-            <h1>GoVult v6.0</h1>
-            <p>Intelligence Audit for: <strong>{{.Target}}</strong></p>
+            <h1>GoVult v9.0</h1>
+            <p>Verified Auditor Report for: <strong>{{.Target}}</strong></p>
         </div>
         <div style="text-align: right;">
             <p>{{.Timestamp}}</p>
-            <p class="tag">Enterprise Intelligence Edition</p>
+            <p style="color: var(--verified); font-weight: bold;">[ VERIFIED AUDITOR EDITION ]</p>
         </div>
     </div>
 
@@ -70,12 +68,8 @@ func GenerateHTML(target string, results []Result, filename string) error {
             <div class="stat-label">Total Findings</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value" style="color: var(--critical);">{{ .Results | filterVulns "critical" }}</div>
-            <div class="stat-label">Critical</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value" style="color: var(--high);">{{ .Results | filterVulns "high" }}</div>
-            <div class="stat-label">High</div>
+            <div class="stat-value" style="color: var(--verified);">{{ .Results | filterVerified }}</div>
+            <div class="stat-label">Automatically Verified</div>
         </div>
     </div>
 
@@ -84,19 +78,24 @@ func GenerateHTML(target string, results []Result, filename string) error {
         <div class="vuln-header">
             <div>
                 <span class="severity {{.Severity}}">{{.Severity}}</span>
+                {{if .Verified}}<span class="badge-verified">VERIFIED</span>{{end}}
                 <span style="font-size: 18px; font-weight: bold; margin-left: 10px;">{{.TemplateID}}</span>
             </div>
-            <div class="cvss">CVSS: {{.CVSS}} / 10.0</div>
+            <div style="opacity: 0.6; font-size: 13px;">CVSS: {{.CVSS}}</div>
         </div>
         <div class="vuln-body">
             <span class="label">Target Instance:</span>
-            <div class="tag">{{.Target}}</div>
+            <div style="font-family: monospace; color: #94a3b8;">{{.Target}}</div>
             
-            <span class="label">Description:</span>
-            <p>{{.Description}}</p>
+            {{if .Verified}}
+            <span class="label">Audit Evidence:</span>
+            <div class="evidence">
+                {{.Evidence}}
+            </div>
+            {{end}}
 
+            <span class="label">Remediation Advice:</span>
             <div class="remediation">
-                <strong>Remediation Strategy:</strong><br>
                 {{.Remediation}}
             </div>
         </div>
@@ -107,10 +106,10 @@ func GenerateHTML(target string, results []Result, filename string) error {
 `
 	
 	funcMap := template.FuncMap{
-		"filterVulns": func(results []Result, sev string) int {
+		"filterVerified": func(results []Result) int {
 			count := 0
 			for _, r := range results {
-				if r.Severity == sev {
+				if r.Verified {
 					count++
 				}
 			}
