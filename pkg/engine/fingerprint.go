@@ -2,21 +2,21 @@ package engine
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
-
-	"github.com/PuerkitoBio/goquery"
 )
 
 type Fingerprint struct {
-	CMS        string
-	Server     string
-	PoweredBy  string
-	Framework  string
+	CMS       string
+	Server    string
+	PoweredBy string
+	Framework string
+	Techs     []string
 }
 
 func DetectTechnology(target string) (*Fingerprint, error) {
-	fmt.Printf("[FINGERPRINT] Detecting technology for %s\n", target)
+	fmt.Printf("[FINGERPRINT] Deep technology fingerprinting for %s...\n", target)
 	res, err := http.Get(target)
 	if err != nil {
 		return nil, err
@@ -28,23 +28,34 @@ func DetectTechnology(target string) (*Fingerprint, error) {
 		PoweredBy: res.Header.Get("X-Powered-By"),
 	}
 
-	// 1. Meta Tag Check (using goquery)
-	doc, err := goquery.NewDocumentFromReader(res.Body)
-	if err == nil {
-		doc.Find("meta[name='generator']").Each(func(i int, s *goquery.Selection) {
-			content, _ := s.Attr("content")
-			if strings.Contains(strings.ToLower(content), "wordpress") {
-				fp.CMS = "WordPress"
-			}
-		})
+	body, _ := io.ReadAll(res.Body)
+	content := string(body)
+
+	// 1. Meta Tag & Body Check
+	if strings.Contains(strings.ToLower(content), "wp-content") {
+		fp.CMS = "WordPress"
+	}
+	if strings.Contains(strings.ToLower(content), "drupal") {
+		fp.CMS = "Drupal"
+	}
+	if strings.Contains(strings.ToLower(content), "joomla") {
+		fp.CMS = "Joomla"
 	}
 
-	// 2. Common Patterns
-	if strings.Contains(strings.ToLower(fp.PoweredBy), "php") {
-		fp.Framework = "PHP"
+	// 2. JS Libs
+	if strings.Contains(content, "react") || strings.Contains(content, "_next") {
+		fp.Framework = "Next.js / React"
 	}
-	if strings.Contains(strings.ToLower(fp.Server), "nginx") {
-		fp.Server = "Nginx"
+	if strings.Contains(content, "vue.js") || strings.Contains(content, "vuex") {
+		fp.Framework = "Vue.js"
+	}
+	if strings.Contains(content, "jquery.min.js") {
+		fp.Techs = append(fp.Techs, "jQuery")
+	}
+
+	// 3. Header Patterns
+	if strings.Contains(strings.ToLower(fp.Server), "cloudflare") {
+		fp.Techs = append(fp.Techs, "Cloudflare WAF")
 	}
 
 	return fp, nil

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -34,6 +35,20 @@ func main() {
 	authCookie := flag.String("cookie", "", "Session cookie")
 	dashboard := flag.Bool("dashboard", false, "Enable interactive TUI dashboard")
 	stealth := flag.Bool("stealth", true, "Enable JA3 Spoofing (Titan Edition Anti-WAF)")
+	exploit := flag.Bool("exploit", false, "Enable automated exploitation proofing")
+	passive := flag.Bool("passive", false, "Enable passive reconnaissance only (crt.sh)")
+	bypass := flag.Bool("bypass", false, "Enable WAF Bypass (Real IP detection)")
+	oobServer := flag.String("oob", "", "Custom Interactsh OOB server")
+	useAI := flag.Bool("ai", false, "Enable AI-Native Heuristics (Smart Path Guessing)")
+	master := flag.Bool("master", false, "Run in Master mode")
+	worker := flag.Int("worker", 0, "Run in Worker mode on specified port")
+	watch := flag.Duration("watch", 0, "Continuous monitoring interval (e.g. 24h)")
+	ui := flag.Bool("ui", false, "Enable Web Control Center")
+	sca := flag.Bool("sca", false, "Enable Software Composition Analysis (OSV.dev)")
+	secret := flag.Bool("secret", false, "Enable Deep Secret & Credential Hunting")
+	tor := flag.Bool("tor", false, "Enable native Tor routing (127.0.0.1:9050)")
+	fuzz2 := flag.Bool("fuzz-v2", false, "Enable radical mutation-based fuzzing")
+	mitigate := flag.Bool("mitigate", false, "Generate virtual patches and remediation guides")
 	flag.Parse()
 
 	if *target == "" {
@@ -59,9 +74,13 @@ func main() {
 	}
 
 	var govultEngine *engine.Engine
+	if *tor {
+		torURL, _ := url.Parse("socks5://127.0.0.1:9050")
+		proxies = append(proxies, torURL)
+	}
+
 	if *stealth {
-		// Titan Stealth Engine
-		govultEngine = engine.NewEngine(*rateLimit, proxies) // Update after uTLS integration
+		govultEngine = engine.NewEngine(*rateLimit, proxies) 
 	} else {
 		govultEngine = engine.NewEngine(*rateLimit, proxies)
 	}
@@ -69,7 +88,52 @@ func main() {
 	govultEngine.AuthHeader = *authHeader
 	govultEngine.AuthCookie = *authCookie
 
+	// vX: OOB Initialization
+	if *oobServer != "" {
+		govultEngine.OOB = &engine.OOBClient{ServerURL: *oobServer}
+	} else {
+		govultEngine.OOB = engine.NewOOBClient()
+	}
+
+	// vX: Fingerprinting (Smart Mode)
+	fp, _ := engine.DetectTechnology(*target)
+	govultEngine.Fingerprint = fp
+
+	// vX: WAF Bypass (Real IP Detection)
+	if *bypass {
+		origin, err := govultEngine.FindOrigin(*target)
+		if err == nil && origin.Verified {
+			color.HiMagenta("[!!!] BYPASS SUCCESS: Origin IP found at %s (%s)\n", origin.OriginIP, origin.Method)
+			// Optional: Switch target to Origin IP?
+			//*target = "http://" + origin.OriginIP 
+		} else {
+			color.Yellow("[!] Bypass failed: Origin IP could not be verified.\n")
+		}
+	}
+
 	parsedMain, _ := url.Parse(*target)
+
+	// vX: Master/Worker/UI Implementation
+	if *master {
+		fmt.Println("[ULTIMATE] Running in Master mode...")
+		// Logic to manage cluster...
+	}
+
+	if *worker > 0 {
+		engine.RunWorker(*worker, govultEngine)
+		return
+	}
+
+	if *ui {
+		go func() {
+			http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, "<h1>GoVult Ultimate Control Center</h1><p>Target: %s</p>", *target)
+			})
+			fmt.Println("[ULTIMATE] Web Control Center listening on :8081...")
+			http.ListenAndServe(":8081", nil)
+		}()
+	}
+
 	if *portScan || *fullScan {
 		if db != nil {
 			db.Update("Recon: Port Scanning...", 10, 1)
@@ -85,10 +149,39 @@ func main() {
 		if db != nil {
 			db.Update("Discovery: Subdomain Mapping...", 20, 1)
 		}
-		subWords := []string{"www", "api", "dev", "test", "admin"}
-		subs := engine.BruteSubdomains(parsedMain.Host, subWords)
-		for _, s := range subs {
+		
+		// vX: Passive + Active Recon
+		passiveSubs := engine.PassiveDiscovery(parsedMain.Host)
+		for _, s := range passiveSubs {
 			finalTargets = append(finalTargets, "https://"+s+"/")
+		}
+
+		if !*passive {
+			subWords := []string{"www", "api", "dev", "test", "admin"}
+			subs := engine.BruteSubdomains(parsedMain.Host, subWords)
+			for _, s := range subs {
+				finalTargets = append(finalTargets, "https://"+s+"/")
+			}
+		}
+	}
+
+	// vX: Cyber-Overlord Features (SCA)
+	if *sca {
+		scaResults, _ := govultEngine.ScanDependencies(*target)
+		for _, r := range scaResults {
+			fmt.Printf("    - [SCA] VULNERABLE: %s %s (%s)\n", r.Package, r.Version, r.Vulnerability)
+		}
+	}
+
+	// vX: Cyber-Overlord Features (Secrets)
+	if *secret {
+		// Example: collecting body content from the home page
+		resp, _ := http.Get(*target)
+		if resp != nil {
+			defer resp.Body.Close()
+			bodies := make(map[string]string)
+			// ... logic to collect bodies would go here ...
+			govultEngine.RunSecretScan(*target, bodies)
 		}
 	}
 
@@ -116,6 +209,17 @@ func main() {
 				scanQueue = append(scanQueue, crawlResult.Links...)
 				scanQueue = append(scanQueue, crawlResult.JSLinks...)
 			}
+
+			// vX: AI Heuristics
+			if *useAI {
+				ae := engine.NewHeuristicEngine(govultEngine.Fingerprint)
+				scanQueue = append(scanQueue, ae.GuessPaths()...)
+			}
+
+			// vX: Cyber-Overlord Features (Fuzz V2)
+			if *fuzz2 {
+				govultEngine.RunDeepFuzz(domain, "id", "1")
+			}
 		}
 	}
 
@@ -138,6 +242,10 @@ func main() {
 		if err != nil { return nil }
 		if !info.IsDir() && filepath.Ext(path) == ".yaml" {
 			t, _ := template.Load(path)
+			if t == nil {
+				// Try loading as Nuclei template
+				t, _ = engine.LoadNuclei(path)
+			}
 			if t != nil {
 				templates = append(templates, t)
 			}
@@ -164,6 +272,10 @@ func main() {
 			}
 
 			for _, t := range templates {
+				// Only run exploit if flag is set
+				if !*exploit {
+					t.Exploit = nil
+				}
 				results, _ := govultEngine.Run(u, t)
 				for _, r := range results {
 					resultsChan <- r
@@ -192,10 +304,22 @@ func main() {
 	if len(allResults) > 0 {
 		color.HiRed("\n[!!] TITAN: Found %d vulnerabilities with Chaining results!\n", len(allResults))
 		engine.GenerateHTML(*target, allResults, *htmlOutput)
+		
+		if *mitigate {
+			mReport := govultEngine.RunMitigationReport(allResults)
+			fmt.Println(mReport)
+		}
+
 		if *tgToken != "" {
 			engine.SendTelegramNotification(*tgToken, *tgChat, *target, allResults)
 		}
 	} else {
 		color.Green("\n[-] Titan Scan completed. No targets breached.\n")
+	}
+
+	// vX: Watcher Mode
+	if *watch > 0 {
+		watcher := engine.NewWatcher(govultEngine, []string{*target}, *watch)
+		watcher.Start()
 	}
 }

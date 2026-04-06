@@ -32,6 +32,7 @@ func GenerateHTML(target string, results []Result, filename string) error {
             --low: #3b82f6;
             --accent: #0ea5e9;
             --verified: #10b981;
+            --exploited: #f43f5e;
         }
         body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 40px; }
         .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--accent); padding-bottom: 20px; margin-bottom: 40px; }
@@ -44,9 +45,11 @@ func GenerateHTML(target string, results []Result, filename string) error {
         .severity { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
         .critical { background: var(--critical); }
         .badge-verified { background: var(--verified); color: white; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 10px; }
+        .badge-exploited { background: var(--exploited); color: white; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 10px; }
         .vuln-body { padding: 20px; border-top: 1px solid #334155; background: #0f172a80; }
         .label { font-weight: bold; color: var(--accent); margin-top: 10px; display: block; }
         .evidence { background: #0c0a09; color: #a8a29e; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid var(--verified); font-family: monospace; font-size: 13px; }
+        .exploit-proof { background: #1e1b4b; color: #c084fc; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid var(--exploited); font-family: monospace; font-size: 13px; white-space: pre-wrap; }
         .remediation { background: #064e3b; color: #6ee7b7; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #10b981; }
     </style>
 </head>
@@ -79,6 +82,7 @@ func GenerateHTML(target string, results []Result, filename string) error {
             <div>
                 <span class="severity {{.Severity}}">{{.Severity}}</span>
                 {{if .Verified}}<span class="badge-verified">VERIFIED</span>{{end}}
+                {{if .Exploited}}<span class="badge-exploited">EXPLOITED</span>{{end}}
                 <span style="font-size: 18px; font-weight: bold; margin-left: 10px;">{{.TemplateID}}</span>
             </div>
             <div style="opacity: 0.6; font-size: 13px;">CVSS: {{.CVSS}}</div>
@@ -91,6 +95,13 @@ func GenerateHTML(target string, results []Result, filename string) error {
             <span class="label">Audit Evidence:</span>
             <div class="evidence">
                 {{.Evidence}}
+            </div>
+            {{end}}
+
+            {{if .Exploited}}
+            <span class="label">Automatic Exploitation Output:</span>
+            <div class="exploit-proof">
+                {{.ExploitProof}}
             </div>
             {{end}}
 

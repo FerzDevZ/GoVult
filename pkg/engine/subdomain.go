@@ -1,8 +1,11 @@
 package engine
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 )
@@ -38,4 +41,38 @@ func BruteSubdomains(domain string, wordlist []string) []string {
 
 	wg.Wait()
 	return results
+}
+
+type CrtResult struct {
+	NameValue string `json:"common_name"`
+}
+
+func PassiveDiscovery(domain string) []string {
+	fmt.Printf("[RECON] Performing passive subdomain discovery for %s via crt.sh...\n", domain)
+	url := fmt.Sprintf("https://crt.sh/?q=%%25.%s&output=json", domain)
+	
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var crtResults []CrtResult
+	if err := json.Unmarshal(body, &crtResults); err != nil {
+		return nil
+	}
+
+	unique := make(map[string]bool)
+	var subdomains []string
+	for _, res := range crtResults {
+		sub := strings.ToLower(res.NameValue)
+		if !unique[sub] && strings.HasSuffix(sub, domain) {
+			unique[sub] = true
+			subdomains = append(subdomains, sub)
+			fmt.Printf("    - [PASSIVE] Found: %s\n", sub)
+		}
+	}
+
+	return subdomains
 }

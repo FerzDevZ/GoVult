@@ -4,6 +4,7 @@ type Template struct {
 	ID       string    `yaml:"id"`
 	Info     Info      `yaml:"info"`
 	Requests []Request `yaml:"requests"`
+	Exploit  *Exploit  `yaml:"exploit"`
 }
 
 type Info struct {
@@ -14,9 +15,12 @@ type Info struct {
 }
 
 type Request struct {
-	Method   string    `yaml:"method"`
-	Path     []string  `yaml:"path"`
-	Matchers []Matcher `yaml:"matchers"`
+	Method    string      `yaml:"method"`
+	Path      []string    `yaml:"path"`
+	Headers   map[string]string `yaml:"headers"`
+	Body      string      `yaml:"body"`
+	Matchers  []Matcher   `yaml:"matchers"`
+	Extractors []Extractor `yaml:"extractors"`
 }
 
 type Matcher struct {
@@ -29,4 +33,23 @@ type Matcher struct {
 	Size      []int    `yaml:"size"`
 	CSS       []string `yaml:"css"`
 	JSON      []string `yaml:"json"`
+}
+
+type Extractor struct {
+	Type  string `yaml:"type"` // regex, json, header
+	Regex []string `yaml:"regex"`
+	JSON  []string `yaml:"json"`
+	Name  string `yaml:"name"` // Variable name for chaining
+}
+
+type Exploit struct {
+	Steps []ExploitStep `yaml:"steps"`
+}
+
+type ExploitStep struct {
+	Method   string            `yaml:"method"`
+	Path     string            `yaml:"path"`
+	Headers  map[string]string `yaml:"headers"`
+	Body     string            `yaml:"body"`
+	Matchers []Matcher         `yaml:"matchers"`
 }
