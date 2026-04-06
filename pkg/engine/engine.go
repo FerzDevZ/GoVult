@@ -314,8 +314,8 @@ func GetRemediation(id string) string {
 func (e *Engine) Wait() {
 	e.Limiter.Wait(context.Background())
 	if e.Jitter {
-		// Add 50-200ms randomized delay to avoid pattern detection
-		ms := 50 + (time.Now().UnixNano() % 150)
+		// Reduced jitter for Ares Overdrive performance (10-50ms)
+		ms := 10 + (time.Now().UnixNano() % 40)
 		time.Sleep(time.Duration(ms) * time.Millisecond)
 	}
 }

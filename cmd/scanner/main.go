@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -226,63 +225,68 @@ func main() {
 		}
 	}
 
+	// Build Scan Queue
 	var scanQueue []string
+	uniqueQueue := make(map[string]bool)
+
+	// 1. Initial Targets (Subdomains + Main)
 	for _, domain := range finalTargets {
-		scanQueue = append(scanQueue, domain)
-		if *fullScan {
-			// Discovery
-			words := []string{".env", ".git/config", "admin"}
-			if *wordlist != "" {
-				words, _ = utils.LoadWordlist(*wordlist)
-			}
-			opts := engine.FuzzerOptions{MaxDepth: 1}
-			if *recursive {
-				opts.MaxDepth = 2
-			}
-			discoveryResults, _ := engine.Fuzz(domain, words, opts)
-			for _, r := range discoveryResults {
+		if !uniqueQueue[domain] {
+			uniqueQueue[domain] = true
+			scanQueue = append(scanQueue, domain)
+		}
+	}
+
+	// 2. Deep Discovery & Crawling (Only on primary target to avoid exploding requests)
+	if *fullScan {
+		color.HiYellow("[SYSTEM] Running deep discovery and crawl on primary target: %s\n", *target)
+		
+		// Discovery
+		words := []string{".env", ".git/config", "admin", "config", "backup"}
+		if *wordlist != "" {
+			words, _ = utils.LoadWordlist(*wordlist)
+		}
+		fuzzOpts := engine.FuzzerOptions{MaxDepth: 1}
+		if *recursive {
+			fuzzOpts.MaxDepth = 2
+		}
+		discoveryResults, _ := engine.Fuzz(*target, words, fuzzOpts)
+		for _, r := range discoveryResults {
+			if !uniqueQueue[r.Path] {
+				uniqueQueue[r.Path] = true
 				scanQueue = append(scanQueue, r.Path)
 			}
+		}
 
-			// Crawling (Auto-Headless for SPAs)
-			crawlResult, _ := engine.Crawl(domain)
-			if crawlResult != nil {
-				scanQueue = append(scanQueue, crawlResult.Links...)
-				scanQueue = append(scanQueue, crawlResult.JSLinks...)
+		// Crawling
+		crawlResult, _ := engine.Crawl(*target)
+		if crawlResult != nil {
+			for _, l := range append(crawlResult.Links, crawlResult.JSLinks...) {
+				if !uniqueQueue[l] {
+					uniqueQueue[l] = true
+					scanQueue = append(scanQueue, l)
+				}
 			}
+		}
 
-			// vX: AI Heuristics
-			if *useAI {
-				ae := engine.NewHeuristicEngine(govultEngine.Fingerprint)
-				scanQueue = append(scanQueue, ae.GuessPaths()...)
-			}
+		// vX: Cyber-Overlord Features (Fuzz V2)
+		if *fuzz2 {
+			govultEngine.RunDeepFuzz(*target, "id", "1")
+		}
 
-			// vX: Cyber-Overlord Features (Fuzz V2)
-			if *fuzz2 {
-				govultEngine.RunDeepFuzz(domain, "id", "1")
-			}
-
-			// vX: Singularity Phase 2 (Auto-Exfiltration)
-			if strings.Contains(domain, ".env") {
-				exData := govultEngine.DownloadAndExfiltrate(domain)
-				if len(exData) > 0 {
-					color.HiRed("[!] EXFILTRATED SECRETS FROM %s:\n", domain)
-					for k, v := range exData {
-						fmt.Printf("    - %s: %s\n", k, v)
-					}
+		// vX: AI Heuristics
+		if *useAI {
+			ae := engine.NewHeuristicEngine(govultEngine.Fingerprint)
+			for _, p := range ae.GuessPaths() {
+				if !uniqueQueue[*target+p] {
+					uniqueQueue[*target+p] = true
+					scanQueue = append(scanQueue, *target+p)
 				}
 			}
 		}
 	}
 
-	uniqueQueue := make(map[string]bool)
-	var finalQueue []string
-	for _, u := range scanQueue {
-		if !uniqueQueue[u] {
-			uniqueQueue[u] = true
-			finalQueue = append(finalQueue, u)
-		}
-	}
+	finalQueue := scanQueue
 
 	// Template Loading
 	var templates []*template.Template

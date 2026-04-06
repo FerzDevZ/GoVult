@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"net/http"
+	"sync"
 )
 
 // GhostProtocol handles automated OOB injection for blind vulnerabilities
@@ -25,13 +26,19 @@ func (e *Engine) GhostProtocol(target string) {
 		"User-Agent",
 	}
 
+	var wg sync.WaitGroup
 	for _, h := range headers {
-		req, _ := http.NewRequest("GET", target, nil)
-		req.Header.Set(h, oobURL)
-		e.Client.Do(req)
+		wg.Add(1)
+		go func(header string) {
+			defer wg.Done()
+			req, _ := http.NewRequest("GET", target, nil)
+			req.Header.Set(header, oobURL)
+			e.Client.Do(req)
+		}(h)
 	}
+	wg.Wait()
 
-	fmt.Printf("    [!] Injected OOB ID: %s into %d headers. Monitoring for callbacks...\n", correlationID, len(headers))
+	fmt.Printf("    [!] Injected OOB ID: %s into %d headers concurrently. Monitoring for callbacks...\n", correlationID, len(headers))
 }
 
 // MonitorGhost waits for OOB interactions
