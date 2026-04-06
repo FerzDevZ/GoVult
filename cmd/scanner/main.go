@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,6 +50,11 @@ func main() {
 	tor := flag.Bool("tor", false, "Enable native Tor routing (127.0.0.1:9050)")
 	fuzz2 := flag.Bool("fuzz-v2", false, "Enable radical mutation-based fuzzing")
 	mitigate := flag.Bool("mitigate", false, "Generate virtual patches and remediation guides")
+	cloud := flag.Bool("cloud", false, "Enable Multi-Cloud Infrastructure Auditing")
+	payload := flag.Bool("payload", false, "Enable Interactive Reverse Shell Payload Factory")
+	honeypot := flag.Bool("honeypot", false, "Enable Honeypot & Deception Awareness")
+	ares := flag.Bool("ares", false, "Enable Ares Overdrive (Full Offensive KILL-CHAIN)")
+	ghost := flag.Bool("ghost", false, "Enable Ghost Protocol (Automated OOB Injection)")
 	flag.Parse()
 
 	if *target == "" {
@@ -165,6 +171,41 @@ func main() {
 		}
 	}
 
+	// vX: Ares Overdrive Features (Ghost Protocol)
+	if *ghost {
+		govultEngine.GhostProtocol(*target)
+	}
+
+	// vX: Ares Overdrive Features (Param-Diver)
+	if *ares {
+		paramsFound := govultEngine.ParamDiver(*target)
+		for _, p := range paramsFound {
+			color.HiCyan("[!] ARES: Found hidden parameter: %s (Behavioral change detected!)\n", p)
+		}
+	}
+
+	// vX: Nebula Features (Honeypot)
+	if *honeypot {
+		hpResults, _ := govultEngine.DetectHoneypot(*target)
+		for _, r := range hpResults {
+			color.HiYellow("[!] DECEPTION ALERT: %s (%s) - Risk: %s\n", r.Type, r.Evidence, r.Risk)
+		}
+	}
+
+	// vX: Nebula Features (Cloud Auditor)
+	if *cloud {
+		cloudResults, _ := govultEngine.AuditCloud(*target)
+		for _, r := range cloudResults {
+			color.HiCyan("[CLOUD] Found %s %s: %s (%s)\n", r.Provider, r.Service, r.Detail, r.Severity)
+		}
+	}
+
+	// vX: Singularity Phase 2 (VCS Scout)
+	vcsResults, _ := govultEngine.ProbeVCS(*target)
+	for _, r := range vcsResults {
+		color.HiRed("[VCS] Publicly accessible %s file: %s (%s)\n", r.Type, r.Path, r.Evidence)
+	}
+
 	// vX: Cyber-Overlord Features (SCA)
 	if *sca {
 		scaResults, _ := govultEngine.ScanDependencies(*target)
@@ -219,6 +260,17 @@ func main() {
 			// vX: Cyber-Overlord Features (Fuzz V2)
 			if *fuzz2 {
 				govultEngine.RunDeepFuzz(domain, "id", "1")
+			}
+
+			// vX: Singularity Phase 2 (Auto-Exfiltration)
+			if strings.Contains(domain, ".env") {
+				exData := govultEngine.DownloadAndExfiltrate(domain)
+				if len(exData) > 0 {
+					color.HiRed("[!] EXFILTRATED SECRETS FROM %s:\n", domain)
+					for k, v := range exData {
+						fmt.Printf("    - %s: %s\n", k, v)
+					}
+				}
 			}
 		}
 	}
@@ -303,11 +355,26 @@ func main() {
 
 	if len(allResults) > 0 {
 		color.HiRed("\n[!!] TITAN: Found %d vulnerabilities with Chaining results!\n", len(allResults))
+		
+		// vX: Ares Overdrive Features (Kill-Chain)
+		if *ares {
+			chainedResults := govultEngine.RunKillChain(*target, allResults)
+			allResults = append(allResults, chainedResults...)
+		}
+
 		engine.GenerateHTML(*target, allResults, *htmlOutput)
 		
 		if *mitigate {
 			mReport := govultEngine.RunMitigationReport(allResults)
 			fmt.Println(mReport)
+		}
+
+		// vX: Nebula Payload Factory
+		if *payload {
+			color.HiMagenta("\n[🦾] NEBULA: Reverse Shell Payload Factory Enabled!")
+			lip := engine.GetLIP()
+			shell := engine.GenerateReverseShell(engine.BashShell, lip, 4444, "base64")
+			fmt.Printf("    - Generated (LIP: %s, Port: 4444): %s\n", lip, shell)
 		}
 
 		if *tgToken != "" {

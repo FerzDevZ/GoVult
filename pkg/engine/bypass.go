@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,14 +24,8 @@ func (e *Engine) FindOrigin(target string) (*BypassResult, error) {
 	fmt.Printf("[BYPASS] Searching for origin IP of %s...\n", domain)
 
 	// 1. SSL Certificate matching via crt.sh (Passive)
-	// This is a simplified version: we look for subdomains that might point to the same origin
 	subdomains := PassiveDiscovery(domain)
 	for _, sub := range subdomains {
-		// vX: OOB Detection (Interactions)
-		if e.OOB != nil && strings.Contains(sub, "blind") {
-			oobURL, correlationID := e.OOB.GenerateURL()
-			fmt.Printf("    [OOB] Generated tracking URL: %s (ID: %s)\n", oobURL, correlationID)
-		}
 		if strings.HasPrefix(sub, "direct.") || strings.HasPrefix(sub, "origin.") || strings.HasPrefix(sub, "dev.") {
 			fmt.Printf("    [!] Found potential origin subdomain: %s\n", sub)
 			ip, err := e.verifyOrigin(target, sub)
@@ -40,10 +35,38 @@ func (e *Engine) FindOrigin(target string) (*BypassResult, error) {
 		}
 	}
 
-	// 2. SSL/TLS Certificate serial matching (Theoretical - requires Censys or similar)
-	// For this manual implementation, we'll suggest manual verification or use a common IP range scan
-	
+	// 2. SSL/SAN Extraction (Active)
+	fmt.Printf("    [!] Extracting Subject Alternative Names (SAN) from SSL certificate...\n")
+	sans, _ := e.ExtractSANs(target)
+	for _, san := range sans {
+		if san != domain {
+			fmt.Printf("    [!] Found SAN: %s, probing for origin...\n", san)
+			ip, err := e.verifyOrigin(target, san)
+			if err == nil {
+				return &BypassResult{OriginIP: ip, Method: "SSL-SAN-Match", Verified: true}, nil
+			}
+		}
+	}
+
 	return nil, fmt.Errorf("origin IP not found")
+}
+
+// ExtractSANs retrieves the DNS names from the target's SSL certificate
+func (e *Engine) ExtractSANs(target string) ([]string, error) {
+	u, _ := url.Parse(target)
+	port := u.Port()
+	if port == "" { port = "443" }
+
+	conf := &tls.Config{InsecureSkipVerify: true}
+	conn, err := tls.Dial("tcp", u.Host+":"+port, conf)
+	if err != nil { return nil, err }
+	defer conn.Close()
+
+	var names []string
+	for _, cert := range conn.ConnectionState().PeerCertificates {
+		names = append(names, cert.DNSNames...)
+	}
+	return names, nil
 }
 
 func (e *Engine) verifyOrigin(target, originHost string) (string, error) {

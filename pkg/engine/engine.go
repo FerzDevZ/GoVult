@@ -31,6 +31,7 @@ type Result struct {
 	Evidence    string
 	Exploited   bool
 	ExploitProof string
+	ExfiltratedData map[string]string
 }
 
 type ProxyRotator struct {
