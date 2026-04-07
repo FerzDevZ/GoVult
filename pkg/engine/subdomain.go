@@ -48,31 +48,65 @@ type CrtResult struct {
 }
 
 func PassiveDiscovery(domain string) []string {
-	fmt.Printf("[RECON] Performing passive subdomain discovery for %s via crt.sh...\n", domain)
-	url := fmt.Sprintf("https://crt.sh/?q=%%25.%s&output=json", domain)
-	
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	var crtResults []CrtResult
-	if err := json.Unmarshal(body, &crtResults); err != nil {
-		return nil
-	}
-
+	fmt.Printf("[RECON] Performing multi-source passive discovery for %s...\n", domain)
 	unique := make(map[string]bool)
 	var subdomains []string
-	for _, res := range crtResults {
-		sub := strings.ToLower(res.NameValue)
-		if !unique[sub] && strings.HasSuffix(sub, domain) {
-			unique[sub] = true
-			subdomains = append(subdomains, sub)
-			fmt.Printf("    - [PASSIVE] Found: %s\n", sub)
+
+	sources := []struct {
+		name string
+		url  string
+	}{
+		{"crt.sh", "https://crt.sh/?q=%.domain&output=json"},
+		{"RapidDNS", "https://rapiddns.io/subdomain/domain?full=1"},
+		{"HackerTarget", "https://api.hackertarget.com/hostsearch/?q=domain"},
+	}
+
+	for _, s := range sources {
+		u := strings.ReplaceAll(s.url, "domain", domain)
+		resp, err := http.Get(u)
+		if err != nil {
+			continue
 		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+
+		switch s.name {
+		case "crt.sh":
+			var crtResults []CrtResult
+			json.Unmarshal(body, &crtResults)
+			for _, res := range crtResults {
+				addIfUnique(res.NameValue, domain, unique, &subdomains)
+			}
+		case "RapidDNS":
+			// Simple regex for rapiddns.io
+			re := regexp.MustCompile(`<td>([a-z0-9.-]+\.`+domain+`)</td>`)
+			matches := re.FindAllStringSubmatch(string(body), -1)
+			for _, m := range matches {
+				addIfUnique(m[1], domain, unique, &subdomains)
+			}
+		case "HackerTarget":
+			lines := strings.Split(string(body), "\n")
+			for _, line := range lines {
+				parts := strings.Split(line, ",")
+				if len(parts) > 0 {
+					addIfUnique(parts[0], domain, unique, &subdomains)
+				}
+			}
+		}
+		fmt.Printf("    - [RECON] Source %s completed.\n", s.name)
 	}
 
 	return subdomains
+}
+
+func addIfUnique(sub, domain string, unique map[string]bool, results *[]string) {
+	sub = strings.ToLower(strings.TrimSpace(sub))
+	if sub == "" || strings.HasPrefix(sub, "*.") {
+		return
+	}
+	if !unique[sub] && strings.HasSuffix(sub, domain) {
+		unique[sub] = true
+		*results = append(*results, sub)
+		fmt.Printf("    - [FOUND] %s\n", sub)
+	}
 }

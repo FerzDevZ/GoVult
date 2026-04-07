@@ -16,10 +16,20 @@ type CrawlResult struct {
 	Forms   []string
 	Inputs  []string
 	JSLinks []string
+	Depth   int
 }
 
-func Crawl(target string) (*CrawlResult, error) {
-	fmt.Printf("[CRAWL] Starting crawl on %s\n", target)
+func Crawl(target string, maxDepth int) (*CrawlResult, error) {
+	return crawlRecursive(target, 0, maxDepth, make(map[string]bool))
+}
+
+func crawlRecursive(target string, currentDepth, maxDepth int, visited map[string]bool) (*CrawlResult, error) {
+	if currentDepth > maxDepth || visited[target] {
+		return &CrawlResult{}, nil
+	}
+	visited[target] = true
+
+	fmt.Printf("[CRAWL] Scanning depth %d: %s\n", currentDepth, target)
 	res, err := http.Get(target)
 	if err != nil {
 		return nil, err
@@ -28,14 +38,12 @@ func Crawl(target string) (*CrawlResult, error) {
 
 	body, _ := io.ReadAll(res.Body)
 	content := string(body)
+	
+	result := &CrawlResult{Depth: currentDepth}
+	baseURL, _ := url.Parse(target)
 
 	// vX: Titan SPA Detection
 	isSPA := strings.Contains(content, "id=\"app\"") || strings.Contains(content, "id=\"root\"")
-	
-	result := &CrawlResult{}
-	baseURL, _ := url.Parse(target)
-
-	// Switch to Headless Mode if SPA is detected
 	if isSPA {
 		fmt.Printf("[TITAN] SPA detected! Switching to Headless Crawler (Chromedp)...\n")
 		hLinks, _ := HeadlessCrawl(target)
@@ -53,6 +61,15 @@ func Crawl(target string) (*CrawlResult, error) {
 				abs := baseURL.ResolveReference(u).String()
 				if strings.HasPrefix(abs, target) {
 					result.Links = append(result.Links, abs)
+					
+					// Recursive Crawl
+					if currentDepth < maxDepth {
+						subRes, _ := crawlRecursive(abs, currentDepth+1, maxDepth, visited)
+						if subRes != nil {
+							result.Links = append(result.Links, subRes.Links...)
+							result.JSLinks = append(result.JSLinks, subRes.JSLinks...)
+						}
+					}
 				}
 			}
 		}
@@ -66,13 +83,6 @@ func Crawl(target string) (*CrawlResult, error) {
 		
 		endpoints, _ := ExtractJSLinks(absJS)
 		result.JSLinks = append(result.JSLinks, endpoints...)
-	})
-
-	// 3. Forms
-	doc.Find("form").Each(func(i int, s *goquery.Selection) {
-		action, _ := s.Attr("action")
-		method, _ := s.Attr("method")
-		result.Forms = append(result.Forms, fmt.Sprintf("%s (%s)", action, method))
 	})
 
 	return result, nil

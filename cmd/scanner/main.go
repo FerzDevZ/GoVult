@@ -54,6 +54,8 @@ func main() {
 	honeypot := flag.Bool("honeypot", false, "Enable Honeypot & Deception Awareness")
 	ares := flag.Bool("ares", false, "Enable Ares Overdrive (Full Offensive KILL-CHAIN)")
 	ghost := flag.Bool("ghost", false, "Enable Ghost Protocol (Automated OOB Injection)")
+	turbo := flag.Bool("turbo", false, "Enable Turbo Mode (High Speed + Parallel Recon)")
+	depth := flag.Int("depth", 2, "Maximum crawling depth")
 	flag.Parse()
 
 	if *target == "" {
@@ -88,6 +90,14 @@ func main() {
 		govultEngine = engine.NewEngine(*rateLimit, proxies) 
 	} else {
 		govultEngine = engine.NewEngine(*rateLimit, proxies)
+	}
+
+	if *turbo {
+		govultEngine.Turbo = true
+		if *rateLimit == 5 { *rateLimit = 50 }
+		if *concurrency == 20 { *concurrency = 100 }
+		*useAI = true
+		color.HiYellow("[TURBO] Mode Enabled: RPS=%d, Workers=%d, Jitter=OFF", *rateLimit, *concurrency)
 	}
 	
 	govultEngine.AuthHeader = *authHeader
@@ -139,70 +149,111 @@ func main() {
 		}()
 	}
 
+	// vX: Parallel Recon Pipeline
+	var reconWG sync.WaitGroup
+
 	if *portScan || *fullScan {
-		if db != nil {
-			db.Update("Recon: Port Scanning...", 10, 1)
-		}
-		topPorts := []int{21, 22, 80, 443, 3306, 6379, 8080}
-		engine.ScanPorts(parsedMain.Host, topPorts)
+		reconWG.Add(1)
+		go func() {
+			defer reconWG.Done()
+			if db != nil {
+				db.Update("Recon: Port Scanning...", 10, 1)
+			}
+			topPorts := []int{21, 22, 80, 443, 3306, 6379, 8080}
+			engine.ScanPorts(parsedMain.Host, topPorts)
+		}()
 	}
 
 	var finalTargets []string
 	finalTargets = append(finalTargets, *target)
+	var targetsMu sync.Mutex
 
 	if *subdomains || *fullScan {
-		if db != nil {
-			db.Update("Discovery: Subdomain Mapping...", 20, 1)
-		}
-		
-		// vX: Passive + Active Recon
-		passiveSubs := engine.PassiveDiscovery(parsedMain.Host)
-		for _, s := range passiveSubs {
-			finalTargets = append(finalTargets, "https://"+s+"/")
-		}
-
-		if !*passive {
-			subWords := []string{"www", "api", "dev", "test", "admin"}
-			subs := engine.BruteSubdomains(parsedMain.Host, subWords)
-			for _, s := range subs {
+		reconWG.Add(1)
+		go func() {
+			defer reconWG.Done()
+			if db != nil {
+				db.Update("Discovery: Subdomain Mapping...", 20, 1)
+			}
+			
+			// vX: Passive + Active Recon
+			passiveSubs := engine.PassiveDiscovery(parsedMain.Host)
+			targetsMu.Lock()
+			for _, s := range passiveSubs {
 				finalTargets = append(finalTargets, "https://"+s+"/")
 			}
-		}
+			targetsMu.Unlock()
+
+			if !*passive {
+				subWords := []string{"www", "api", "dev", "test", "admin"}
+				subs := engine.BruteSubdomains(parsedMain.Host, subWords)
+				targetsMu.Lock()
+				for _, s := range subs {
+					finalTargets = append(finalTargets, "https://"+s+"/")
+				}
+				targetsMu.Unlock()
+			}
+		}()
 	}
 
 	// vX: Ares Overdrive Features (Ghost Protocol)
 	if *ghost {
-		govultEngine.GhostProtocol(*target)
+		reconWG.Add(1)
+		go func() {
+			defer reconWG.Done()
+			govultEngine.GhostProtocol(*target)
+		}()
 	}
 
 	// vX: Ares Overdrive Features (Param-Diver)
 	if *ares {
-		paramsFound := govultEngine.ParamDiver(*target)
-		for _, p := range paramsFound {
-			color.HiCyan("[!] ARES: Found hidden parameter: %s (Behavioral change detected!)\n", p)
-		}
+		reconWG.Add(1)
+		go func() {
+			defer reconWG.Done()
+			paramsFound := govultEngine.ParamDiver(*target)
+			for _, p := range paramsFound {
+				color.HiCyan("[!] ARES: Found hidden parameter: %s (Behavioral change detected!)\n", p)
+			}
+		}()
 	}
 
 	// vX: Nebula Features (Honeypot)
 	if *honeypot {
-		hpResults, _ := govultEngine.DetectHoneypot(*target)
-		for _, r := range hpResults {
-			color.HiYellow("[!] DECEPTION ALERT: %s (%s) - Risk: %s\n", r.Type, r.Evidence, r.Risk)
-		}
+		reconWG.Add(1)
+		go func() {
+			defer reconWG.Done()
+			hpResults, _ := govultEngine.DetectHoneypot(*target)
+			for _, r := range hpResults {
+				color.HiYellow("[!] DECEPTION ALERT: %s (%s) - Risk: %s\n", r.Type, r.Evidence, r.Risk)
+			}
+		}()
 	}
 
 	// vX: Nebula Features (Cloud Auditor)
 	if *cloud {
-		cloudResults, _ := govultEngine.AuditCloud(*target)
-		for _, r := range cloudResults {
-			color.HiCyan("[CLOUD] Found %s %s: %s (%s)\n", r.Provider, r.Service, r.Detail, r.Severity)
-		}
+		reconWG.Add(1)
+		go func() {
+			defer reconWG.Done()
+			cloudResults, _ := govultEngine.AuditCloud(*target)
+			for _, r := range cloudResults {
+				color.HiCyan("[CLOUD] Found %s %s: %s (%s)\n", r.Provider, r.Service, r.Detail, r.Severity)
+			}
+		}()
 	}
 
 	// vX: Singularity Phase 2 (VCS Scout)
-	vcsResults, _ := govultEngine.ProbeVCS(*target)
-	for _, r := range vcsResults {
-		color.HiRed("[VCS] Publicly accessible %s file: %s (%s)\n", r.Type, r.Path, r.Evidence)
+	reconWG.Add(1)
+	go func() {
+		defer reconWG.Done()
+		vcsResults, _ := govultEngine.ProbeVCS(*target)
+		for _, r := range vcsResults {
+			color.HiRed("[VCS] Publicly accessible %s file: %s (%s)\n", r.Type, r.Path, r.Evidence)
+		}
+	}()
+
+	// Wait for Recon Phase 1 to complete if not in Turbo, or just continue
+	if !*turbo {
+		reconWG.Wait()
 	}
 
 	// vX: Cyber-Overlord Features (SCA)
@@ -259,7 +310,7 @@ func main() {
 		}
 
 		// Crawling
-		crawlResult, _ := engine.Crawl(*target)
+		crawlResult, _ := engine.Crawl(*target, *depth)
 		if crawlResult != nil {
 			for _, l := range append(crawlResult.Links, crawlResult.JSLinks...) {
 				if !uniqueQueue[l] {

@@ -17,21 +17,22 @@ import (
 )
 
 type Result struct {
-	TemplateID  string
-	Target      string
-	Severity    string
-	Matched     bool
-	Status      int
-	Description string
-	Remediation string
-	CVSS        float64
-	WAF         string
-	Version     string
-	Verified    bool
-	Evidence    string
-	Exploited   bool
-	ExploitProof string
+	TemplateID      string
+	Target          string
+	Severity        string
+	Matched         bool
+	Status          int
+	Description     string
+	Remediation     string
+	CVSS            float64
+	WAF             string
+	Version         string
+	Verified        bool
+	Evidence        string
+	Exploited       bool
+	ExploitProof    string
 	ExfiltratedData map[string]string
+	Duration        time.Duration
 }
 
 type ProxyRotator struct {
@@ -62,6 +63,7 @@ type Engine struct {
 	Jitter      bool
 	OOB         *OOBClient
 	Fingerprint *Fingerprint
+	Turbo       bool
 }
 
 func NewEngine(rps int, proxies []*url.URL) *Engine {
@@ -76,11 +78,11 @@ func NewEngine(rps int, proxies []*url.URL) *Engine {
 	client.Jar = jar
 
 	return &Engine{
-		Client:      client,
-		Limiter:     rate.NewLimiter(rate.Limit(rps), 1),
-		Rotator:     &ProxyRotator{Proxies: proxies},
-		ParamCache:  make(map[string][]string),
-		Jitter:      true,
+		Client:     client,
+		Limiter:    rate.NewLimiter(rate.Limit(rps), 1),
+		Rotator:    &ProxyRotator{Proxies: proxies},
+		ParamCache: make(map[string][]string),
+		Jitter:     true,
 	}
 }
 
@@ -123,16 +125,16 @@ func (e *Engine) Run(target string, t *template.Template) ([]Result, error) {
 	for _, req := range t.Requests {
 		for _, path := range req.Path {
 			e.Wait() // vX Smart Rate Limiting with Jitter
-			
+
 			// Replace variables in path
 			finalPath := path
 			for k, v := range variables {
 				finalPath = strings.ReplaceAll(finalPath, "{{"+k+"}}", v)
 			}
-			
+
 			u := target + finalPath
 			res, body, resp, _ := e.scanSingleWithBody(u, req.Method, req.Headers, req.Body, req.Matchers, t)
-			
+
 			if res != nil {
 				// Process Extractors
 				for _, ext := range req.Extractors {
@@ -145,24 +147,24 @@ func (e *Engine) Run(target string, t *template.Template) ([]Result, error) {
 				res.Description = t.Info.Description
 				res.Remediation = GetRemediation(t.ID)
 				res.CVSS = GetCVSS(t.Info.Severity)
-				
+
 				// v9.0: Safe Verification Mode
 				verified, evidence := e.SafeVerify(u, t.ID)
 				res.Verified = verified
 				res.Evidence = evidence
-				
+
 				// vX: Titan Chaining (Pivoting)
 				if verified {
 					e.ChainVulnerability(u, t.ID, &res.Evidence)
 				}
-				
+
 				// vX: Titan Automated Exploitation (Safe Mode)
 				if t.Exploit != nil {
 					proof, success := e.ExecuteExploit(target, t.Exploit)
 					res.Exploited = success
 					res.ExploitProof = proof
 				}
-				
+
 				// vX: OOB Detection (Interactions)
 				if e.OOB != nil && strings.Contains(t.ID, "blind") {
 					oobURL, correlationID := e.OOB.GenerateURL()
@@ -170,7 +172,7 @@ func (e *Engine) Run(target string, t *template.Template) ([]Result, error) {
 					// Logic to inject oobURL into request should be here
 					// For now, we simulate a hit
 				}
-				
+
 				results = append(results, *res)
 			}
 		}
@@ -184,7 +186,19 @@ func (e *Engine) scanSingle(u, method string, matchers []template.Matcher, t *te
 	return res, err
 }
 
+var BypassHeaders = []string{
+	"X-Forwarded-For",
+	"X-Originating-IP",
+	"X-Remote-IP",
+	"X-Remote-Addr",
+	"X-Client-IP",
+	"X-ProxyUser-Ip",
+	"True-Client-IP",
+	"Client-IP",
+}
+
 func (e *Engine) scanSingleWithBody(u, method string, headers map[string]string, bodyStr string, matchers []template.Matcher, t *template.Template) (*Result, string, *http.Response, error) {
+	start := time.Now()
 	httpReq, err := http.NewRequest(method, u, strings.NewReader(bodyStr))
 	if err != nil {
 		return nil, "", nil, err
@@ -192,6 +206,14 @@ func (e *Engine) scanSingleWithBody(u, method string, headers map[string]string,
 
 	for k, v := range headers {
 		httpReq.Header.Set(k, v)
+	}
+
+	// vX: Smart Trusted Header Rotation (WAF Bypass)
+	internalIP := fmt.Sprintf("127.0.0.%d", 1+time.Now().UnixNano()%254)
+	for _, h := range BypassHeaders {
+		if httpReq.Header.Get(h) == "" {
+			httpReq.Header.Set(h, internalIP)
+		}
 	}
 
 	// vX Stealth Headers (Sync with TLS fingerprint)
@@ -209,15 +231,23 @@ func (e *Engine) scanSingleWithBody(u, method string, headers map[string]string,
 	body, _ := io.ReadAll(resp.Body)
 	bodyContent := string(body)
 	waf := DetectWAF(resp.Header, resp.StatusCode)
-	
-	if Match(bodyContent, resp.StatusCode, matchers) {
+	duration := time.Since(start)
+
+	if Match(bodyContent, resp.StatusCode, duration.Seconds(), matchers) {
+		id := ""
+		severity := ""
+		if t != nil {
+			id = t.ID
+			severity = t.Info.Severity
+		}
 		return &Result{
-			TemplateID: t.ID,
+			TemplateID: id,
 			Target:     u,
-			Severity:   t.Info.Severity,
+			Severity:   severity,
 			Matched:    true,
 			Status:     resp.StatusCode,
 			WAF:        waf.Name,
+			Duration:   duration,
 		}, bodyContent, resp, nil
 	}
 
@@ -257,7 +287,7 @@ func (e *Engine) ExecuteExploit(target string, exploit *template.Exploit) (strin
 		e.Wait()
 		u := target + step.Path
 		res, body, _, _ := e.scanSingleWithBody(u, step.Method, step.Headers, step.Body, step.Matchers, nil)
-		
+
 		if res == nil {
 			success = false
 			proof += fmt.Sprintf("\n[STEP %d] Failed: Matchers did not hit for %s", i+1, u)
@@ -272,15 +302,15 @@ func (e *Engine) ExecuteExploit(target string, exploit *template.Exploit) (strin
 func (e *Engine) ScanOneParam(uStr, param string, t *template.Template) ([]Result, error) {
 	var results []Result
 	u, _ := url.Parse(uStr)
-	
+
 	for _, req := range t.Requests {
-		payloads := MutatePayload("1' AND SLEEP(5)--") 
+		payloads := MutatePayload("1' AND SLEEP(5)--")
 		for _, payload := range payloads {
 			e.Limiter.Wait(context.Background())
 			q := u.Query()
 			q.Set(param, payload)
 			u.RawQuery = q.Encode()
-			
+
 			res, _ := e.scanSingle(u.String(), "GET", req.Matchers, t)
 			if res != nil {
 				verified, evidence := e.SafeVerify(u.String(), t.ID)
@@ -296,24 +326,35 @@ func (e *Engine) ScanOneParam(uStr, param string, t *template.Template) ([]Resul
 
 func GetCVSS(severity string) float64 {
 	switch severity {
-	case "critical": return 9.8
-	case "high":     return 8.5
-	default:         return 5.5
+	case "critical":
+		return 9.8
+	case "high":
+		return 8.5
+	default:
+		return 5.5
 	}
 }
 
 func GetRemediation(id string) string {
-	if strings.Contains(id, "sqli") { return "Use Prepared Statements/Parameterized Queries." }
-	if strings.Contains(id, "xxe") { return "Disable XML External Entity (XXE) resolution in your XML parser." }
-	if strings.Contains(id, "auth") || strings.Contains(id, "cve-2024-10924") { return "Update plugin to version 9.1.2+ immediately." }
-	if strings.Contains(id, "cve-2024-4577") { return "Update PHP to the latest version. Disable CGI mode if not needed." }
+	if strings.Contains(id, "sqli") {
+		return "Use Prepared Statements/Parameterized Queries."
+	}
+	if strings.Contains(id, "xxe") {
+		return "Disable XML External Entity (XXE) resolution in your XML parser."
+	}
+	if strings.Contains(id, "auth") || strings.Contains(id, "cve-2024-10924") {
+		return "Update plugin to version 9.1.2+ immediately."
+	}
+	if strings.Contains(id, "cve-2024-4577") {
+		return "Update PHP to the latest version. Disable CGI mode if not needed."
+	}
 	return "Update affected component to the latest version."
 }
 
 // Wait implements rate limiting with randomized jitter
 func (e *Engine) Wait() {
 	e.Limiter.Wait(context.Background())
-	if e.Jitter {
+	if e.Jitter && !e.Turbo {
 		// Reduced jitter for Ares Overdrive performance (10-50ms)
 		ms := 10 + (time.Now().UnixNano() % 40)
 		time.Sleep(time.Duration(ms) * time.Millisecond)

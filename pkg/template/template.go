@@ -33,6 +33,7 @@ type Matcher struct {
 	Size      []int    `yaml:"size"`
 	CSS       []string `yaml:"css"`
 	JSON      []string `yaml:"json"`
+	Duration  int      `yaml:"duration"` // in seconds, matches if >= Duration
 }
 
 type Extractor struct {
