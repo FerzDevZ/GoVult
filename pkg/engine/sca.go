@@ -4,15 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 )
 
 // SCAResult represents findings from dependency scanning
 type SCAResult struct {
-	Package    string `json:"package"`
-	Version    string `json:"version"`
+	Package       string `json:"package"`
+	Version       string `json:"version"`
 	Vulnerability string `json:"vuln_id"`
-	Severity   string `json:"severity"`
+	Severity      string `json:"severity"`
 }
 
 // ScanDependencies checks for vulnerable manifest files on the target
@@ -22,11 +24,23 @@ func (e *Engine) ScanDependencies(target string) ([]SCAResult, error) {
 
 	fmt.Printf("[SCA] Scanning target for dependency manifest files...\n")
 	for _, m := range manifests {
-		u := target + "/" + m
-		resp, err := http.Get(u)
-		if err != nil || resp.StatusCode != 200 {
+		e.Wait()
+		u := strings.TrimRight(target, "/") + "/" + m
+		req, err := http.NewRequest(http.MethodGet, u, nil)
+		if err != nil {
 			continue
 		}
+		resp, err := e.Client.Do(req)
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode != 200 {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			continue
+		}
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
 		fmt.Printf("    [!] Found manifest: %s\n", m)
 		// logic to parse manifest and query OSV.dev
 		// (Simplified: Querying OSV for a known vulnerable example for demo)
@@ -46,7 +60,7 @@ func (e *Engine) queryOSV(ecosystem, name, version string) ([]SCAResult, error) 
 			"ecosystem": ecosystem,
 		},
 	}
-	
+
 	body, _ := json.Marshal(query)
 	resp, err := http.Post(apiURL, "application/json", bytes.NewBuffer(body))
 	if err != nil {
@@ -64,10 +78,10 @@ func (e *Engine) queryOSV(ecosystem, name, version string) ([]SCAResult, error) 
 	var results []SCAResult
 	for _, v := range apiRes.Vulns {
 		results = append(results, SCAResult{
-			Package:    name,
-			Version:    version,
+			Package:       name,
+			Version:       version,
 			Vulnerability: v.ID,
-			Severity:   "High",
+			Severity:      "High",
 		})
 	}
 	return results, nil

@@ -1,10 +1,11 @@
 package template
 
 type Template struct {
-	ID       string    `yaml:"id"`
-	Info     Info      `yaml:"info"`
-	Requests []Request `yaml:"requests"`
-	Exploit  *Exploit  `yaml:"exploit"`
+	ID           string       `yaml:"id"`
+	Info         Info         `yaml:"info"`
+	Precondition Precondition `yaml:"precondition"`
+	Requests     []Request    `yaml:"requests"`
+	Exploit      *Exploit     `yaml:"exploit"`
 }
 
 type Info struct {
@@ -14,19 +15,25 @@ type Info struct {
 	Description string `yaml:"description"`
 }
 
+type Precondition struct {
+	Frameworks []string `yaml:"frameworks"`
+	CMS        []string `yaml:"cms"`
+}
+
 type Request struct {
-	Method    string      `yaml:"method"`
-	Path      []string    `yaml:"path"`
-	Headers   map[string]string `yaml:"headers"`
-	Body      string      `yaml:"body"`
-	Matchers  []Matcher   `yaml:"matchers"`
-	Extractors []Extractor `yaml:"extractors"`
+	Method     string            `yaml:"method"`
+	Path       []string          `yaml:"path"`
+	Headers    map[string]string `yaml:"headers"`
+	Body       string            `yaml:"body"`
+	Matchers   []Matcher         `yaml:"matchers"`
+	Extractors []Extractor       `yaml:"extractors"`
 }
 
 type Matcher struct {
 	Type      string   `yaml:"type"`      // word, status, size, regex, css, json
 	Condition string   `yaml:"condition"` // and, or
 	Part      string   `yaml:"part"`      // body, header, status
+	Negative  bool     `yaml:"negative"`  // invert matcher result if true
 	Words     []string `yaml:"words"`
 	Status    []int    `yaml:"status"`
 	Regex     []string `yaml:"regex"`
@@ -37,10 +44,10 @@ type Matcher struct {
 }
 
 type Extractor struct {
-	Type  string `yaml:"type"` // regex, json, header
+	Type  string   `yaml:"type"` // regex, json, header
 	Regex []string `yaml:"regex"`
 	JSON  []string `yaml:"json"`
-	Name  string `yaml:"name"` // Variable name for chaining
+	Name  string   `yaml:"name"` // Variable name for chaining
 }
 
 type Exploit struct {

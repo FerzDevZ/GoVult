@@ -1,23 +1,34 @@
 package engine
 
 import (
+	"net/http"
 	"regexp"
 	"strings"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/FerzDevZ/GoVult/pkg/template"
+	"github.com/PuerkitoBio/goquery"
 	"github.com/tidwall/gjson"
 )
 
 // Match implements "AND" logic among top-level matchers.
 // All matchers in the list must be true for the result to be matched.
+<<<<<<< HEAD
 func Match(respBody string, statusCode int, duration float64, matchers []template.Matcher) bool {
+=======
+func Match(respBody string, respHeader http.Header, statusCode int, matchers []template.Matcher) bool {
+>>>>>>> 8aaf884 (new update)
 	if len(matchers) == 0 {
 		return false
 	}
 
 	for _, matcher := range matchers {
 		matched := false
+		part := strings.ToLower(strings.TrimSpace(matcher.Part))
+		haystack := respBody
+		if part == "header" {
+			haystack = strings.ToLower(respHeader.String())
+		}
+
 		switch matcher.Type {
 		case "status":
 			for _, s := range matcher.Status {
@@ -30,14 +41,22 @@ func Match(respBody string, statusCode int, duration float64, matchers []templat
 			if matcher.Condition == "and" {
 				matched = true
 				for _, word := range matcher.Words {
-					if !strings.Contains(respBody, word) {
+					needle := word
+					if part == "header" {
+						needle = strings.ToLower(word)
+					}
+					if !strings.Contains(haystack, needle) {
 						matched = false
 						break
 					}
 				}
 			} else { // default to "or"
 				for _, word := range matcher.Words {
-					if strings.Contains(respBody, word) {
+					needle := word
+					if part == "header" {
+						needle = strings.ToLower(word)
+					}
+					if strings.Contains(haystack, needle) {
 						matched = true
 						break
 					}
@@ -49,7 +68,7 @@ func Match(respBody string, statusCode int, duration float64, matchers []templat
 				if err != nil {
 					continue
 				}
-				if re.MatchString(respBody) {
+				if re.MatchString(haystack) {
 					matched = true
 					break
 				}
@@ -62,6 +81,9 @@ func Match(respBody string, statusCode int, duration float64, matchers []templat
 				}
 			}
 		case "css":
+			if part == "header" {
+				continue
+			}
 			doc, err := goquery.NewDocumentFromReader(strings.NewReader(respBody))
 			if err != nil {
 				continue
@@ -73,6 +95,9 @@ func Match(respBody string, statusCode int, duration float64, matchers []templat
 				}
 			}
 		case "json":
+			if part == "header" {
+				continue
+			}
 			for _, path := range matcher.JSON {
 				result := gjson.Get(respBody, path)
 				if result.Exists() {
@@ -84,6 +109,10 @@ func Match(respBody string, statusCode int, duration float64, matchers []templat
 			if duration >= float64(matcher.Duration) {
 				matched = true
 			}
+		}
+
+		if matcher.Negative {
+			matched = !matched
 		}
 
 		// If ANY matcher fails, the whole request fails the "AND" logic.

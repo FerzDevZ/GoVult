@@ -88,13 +88,8 @@ func NewEngine(rps int, proxies []*url.URL) *Engine {
 
 func (e *Engine) Run(target string, t *template.Template) ([]Result, error) {
 	// vX: Smart Template Filtering
-	if e.Fingerprint != nil {
-		if strings.Contains(t.ID, "php") && !strings.Contains(e.Fingerprint.Framework, "PHP") && e.Fingerprint.Framework != "" {
-			return nil, nil // Skip PHP templates on non-PHP sites
-		}
-		if strings.Contains(t.ID, "wordpress") && e.Fingerprint.CMS != "WordPress" {
-			return nil, nil // Skip WP templates on non-WP sites
-		}
+	if !e.templateEligible(t) {
+		return nil, nil
 	}
 
 	var results []Result
@@ -207,6 +202,12 @@ func (e *Engine) scanSingleWithBody(u, method string, headers map[string]string,
 	for k, v := range headers {
 		httpReq.Header.Set(k, v)
 	}
+	if e.AuthHeader != "" && httpReq.Header.Get("Authorization") == "" {
+		httpReq.Header.Set("Authorization", e.AuthHeader)
+	}
+	if e.AuthCookie != "" && httpReq.Header.Get("Cookie") == "" {
+		httpReq.Header.Set("Cookie", e.AuthCookie)
+	}
 
 	// vX: Smart Trusted Header Rotation (WAF Bypass)
 	internalIP := fmt.Sprintf("127.0.0.%d", 1+time.Now().UnixNano()%254)
@@ -231,6 +232,7 @@ func (e *Engine) scanSingleWithBody(u, method string, headers map[string]string,
 	body, _ := io.ReadAll(resp.Body)
 	bodyContent := string(body)
 	waf := DetectWAF(resp.Header, resp.StatusCode)
+<<<<<<< HEAD
 	duration := time.Since(start)
 
 	if Match(bodyContent, resp.StatusCode, duration.Seconds(), matchers) {
@@ -240,6 +242,10 @@ func (e *Engine) scanSingleWithBody(u, method string, headers map[string]string,
 			id = t.ID
 			severity = t.Info.Severity
 		}
+=======
+
+	if Match(bodyContent, resp.Header, resp.StatusCode, matchers) {
+>>>>>>> 8aaf884 (new update)
 		return &Result{
 			TemplateID: id,
 			Target:     u,
@@ -322,6 +328,50 @@ func (e *Engine) ScanOneParam(uStr, param string, t *template.Template) ([]Resul
 		}
 	}
 	return results, nil
+}
+
+func (e *Engine) templateEligible(t *template.Template) bool {
+	if e.Fingerprint == nil {
+		return true
+	}
+
+	if len(t.Precondition.Frameworks) > 0 {
+		ok := false
+		for _, fw := range t.Precondition.Frameworks {
+			if strings.EqualFold(strings.TrimSpace(e.Fingerprint.Framework), strings.TrimSpace(fw)) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+
+	if len(t.Precondition.CMS) > 0 {
+		ok := false
+		for _, cms := range t.Precondition.CMS {
+			if strings.EqualFold(strings.TrimSpace(e.Fingerprint.CMS), strings.TrimSpace(cms)) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+
+	// Backward compatibility with old ID-based filtering.
+	if strings.Contains(strings.ToLower(t.ID), "php") &&
+		!strings.Contains(strings.ToLower(e.Fingerprint.Framework), "php") &&
+		e.Fingerprint.Framework != "" {
+		return false
+	}
+	if strings.Contains(strings.ToLower(t.ID), "wordpress") &&
+		!strings.EqualFold(e.Fingerprint.CMS, "WordPress") {
+		return false
+	}
+	return true
 }
 
 func GetCVSS(severity string) float64 {

@@ -3,12 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/FerzDevZ/GoVult/internal/utils"
 	"github.com/FerzDevZ/GoVult/pkg/engine"
@@ -23,6 +21,8 @@ func main() {
 	rateLimit := flag.Int("rl", 5, "Rate limit (Requests Per Second)")
 	concurrency := flag.Int("c", 20, "Number of concurrent workers (vX Titan)")
 	htmlOutput := flag.String("o", "report.html", "Path to save HTML report")
+	jsonOutput := flag.String("json-out", "", "Path to save JSON report")
+	sarifOutput := flag.String("sarif-out", "", "Path to save SARIF report")
 	tgToken := flag.String("tg-token", "", "Telegram Bot Token")
 	tgChat := flag.String("tg-chat", "", "Telegram Chat ID")
 	proxy := flag.String("proxy", "", "Single Proxy URL")
@@ -87,11 +87,12 @@ func main() {
 	}
 
 	if *stealth {
-		govultEngine = engine.NewEngine(*rateLimit, proxies) 
+		govultEngine = engine.NewEngine(*rateLimit, proxies)
 	} else {
 		govultEngine = engine.NewEngine(*rateLimit, proxies)
 	}
 
+<<<<<<< HEAD
 	if *turbo {
 		govultEngine.Turbo = true
 		if *rateLimit == 5 { *rateLimit = 50 }
@@ -100,6 +101,8 @@ func main() {
 		color.HiYellow("[TURBO] Mode Enabled: RPS=%d, Workers=%d, Jitter=OFF", *rateLimit, *concurrency)
 	}
 	
+=======
+>>>>>>> 8aaf884 (new update)
 	govultEngine.AuthHeader = *authHeader
 	govultEngine.AuthCookie = *authCookie
 
@@ -120,7 +123,7 @@ func main() {
 		if err == nil && origin.Verified {
 			color.HiMagenta("[!!!] BYPASS SUCCESS: Origin IP found at %s (%s)\n", origin.OriginIP, origin.Method)
 			// Optional: Switch target to Origin IP?
-			//*target = "http://" + origin.OriginIP 
+			//*target = "http://" + origin.OriginIP
 		} else {
 			color.Yellow("[!] Bypass failed: Origin IP could not be verified.\n")
 		}
@@ -169,6 +172,7 @@ func main() {
 	var targetsMu sync.Mutex
 
 	if *subdomains || *fullScan {
+<<<<<<< HEAD
 		reconWG.Add(1)
 		go func() {
 			defer reconWG.Done()
@@ -180,6 +184,22 @@ func main() {
 			passiveSubs := engine.PassiveDiscovery(parsedMain.Host)
 			targetsMu.Lock()
 			for _, s := range passiveSubs {
+=======
+		if db != nil {
+			db.Update("Discovery: Subdomain Mapping...", 20, 1)
+		}
+
+		// vX: Passive + Active Recon
+		passiveSubs := engine.PassiveDiscovery(parsedMain.Host)
+		for _, s := range passiveSubs {
+			finalTargets = append(finalTargets, "https://"+s+"/")
+		}
+
+		if !*passive {
+			subWords := []string{"www", "api", "dev", "test", "admin"}
+			subs := engine.BruteSubdomains(parsedMain.Host, subWords)
+			for _, s := range subs {
+>>>>>>> 8aaf884 (new update)
 				finalTargets = append(finalTargets, "https://"+s+"/")
 			}
 			targetsMu.Unlock()
@@ -267,7 +287,7 @@ func main() {
 	// vX: Cyber-Overlord Features (Secrets)
 	if *secret {
 		// Example: collecting body content from the home page
-		resp, _ := http.Get(*target)
+		resp, _ := govultEngine.Client.Get(*target)
 		if resp != nil {
 			defer resp.Body.Close()
 			bodies := make(map[string]string)
@@ -291,7 +311,7 @@ func main() {
 	// 2. Deep Discovery & Crawling (Only on primary target to avoid exploding requests)
 	if *fullScan {
 		color.HiYellow("[SYSTEM] Running deep discovery and crawl on primary target: %s\n", *target)
-		
+
 		// Discovery
 		words := []string{".env", ".git/config", "admin", "config", "backup"}
 		if *wordlist != "" {
@@ -346,7 +366,9 @@ func main() {
 		pathToScan = *templatePath
 	}
 	filepath.Walk(pathToScan, func(path string, info os.FileInfo, err error) error {
-		if err != nil { return nil }
+		if err != nil {
+			return nil
+		}
 		if !info.IsDir() && filepath.Ext(path) == ".yaml" {
 			t, _ := template.Load(path)
 			if t == nil {
@@ -362,6 +384,7 @@ func main() {
 
 	var allResults []engine.Result
 	var wg sync.WaitGroup
+	var collectorWG sync.WaitGroup
 	var mu sync.Mutex
 	resultsChan := make(chan engine.Result)
 	semaphore := make(chan struct{}, *concurrency)
@@ -379,11 +402,12 @@ func main() {
 			}
 
 			for _, t := range templates {
-				// Only run exploit if flag is set
+				// Clone template to avoid shared mutation across goroutines.
+				templateCopy := *t
 				if !*exploit {
-					t.Exploit = nil
+					templateCopy.Exploit = nil
 				}
-				results, _ := govultEngine.Run(u, t)
+				results, _ := govultEngine.Run(u, &templateCopy)
 				for _, r := range results {
 					resultsChan <- r
 				}
@@ -391,7 +415,9 @@ func main() {
 		}(i, uStr)
 	}
 
+	collectorWG.Add(1)
 	go func() {
+		defer collectorWG.Done()
 		for res := range resultsChan {
 			mu.Lock()
 			allResults = append(allResults, res)
@@ -406,11 +432,11 @@ func main() {
 
 	wg.Wait()
 	close(resultsChan)
-	time.Sleep(500 * time.Millisecond)
+	collectorWG.Wait()
 
 	if len(allResults) > 0 {
 		color.HiRed("\n[!!] TITAN: Found %d vulnerabilities with Chaining results!\n", len(allResults))
-		
+
 		// vX: Ares Overdrive Features (Kill-Chain)
 		if *ares {
 			chainedResults := govultEngine.RunKillChain(*target, allResults)
@@ -418,7 +444,13 @@ func main() {
 		}
 
 		engine.GenerateHTML(*target, allResults, *htmlOutput)
-		
+		if *jsonOutput != "" {
+			engine.GenerateJSON(*target, allResults, *jsonOutput)
+		}
+		if *sarifOutput != "" {
+			engine.GenerateSARIF(allResults, *sarifOutput)
+		}
+
 		if *mitigate {
 			mReport := govultEngine.RunMitigationReport(allResults)
 			fmt.Println(mReport)
