@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -23,6 +24,8 @@ func main() {
 	htmlOutput := flag.String("o", "report.html", "Path to save HTML report")
 	jsonOutput := flag.String("json-out", "", "Path to save JSON report")
 	sarifOutput := flag.String("sarif-out", "", "Path to save SARIF report")
+	baselineIn := flag.String("baseline-in", "", "Path to baseline JSON for diff mode")
+	baselineOut := flag.String("baseline-out", "", "Path to write current baseline JSON")
 	tgToken := flag.String("tg-token", "", "Telegram Bot Token")
 	tgChat := flag.String("tg-chat", "", "Telegram Chat ID")
 	proxy := flag.String("proxy", "", "Single Proxy URL")
@@ -91,18 +94,17 @@ func main() {
 	} else {
 		govultEngine = engine.NewEngine(*rateLimit, proxies)
 	}
-
-<<<<<<< HEAD
 	if *turbo {
 		govultEngine.Turbo = true
-		if *rateLimit == 5 { *rateLimit = 50 }
-		if *concurrency == 20 { *concurrency = 100 }
+		if *rateLimit == 5 {
+			*rateLimit = 50
+		}
+		if *concurrency == 20 {
+			*concurrency = 100
+		}
 		*useAI = true
 		color.HiYellow("[TURBO] Mode Enabled: RPS=%d, Workers=%d, Jitter=OFF", *rateLimit, *concurrency)
 	}
-	
-=======
->>>>>>> 8aaf884 (new update)
 	govultEngine.AuthHeader = *authHeader
 	govultEngine.AuthCookie = *authCookie
 
@@ -172,34 +174,17 @@ func main() {
 	var targetsMu sync.Mutex
 
 	if *subdomains || *fullScan {
-<<<<<<< HEAD
 		reconWG.Add(1)
 		go func() {
 			defer reconWG.Done()
 			if db != nil {
 				db.Update("Discovery: Subdomain Mapping...", 20, 1)
 			}
-			
+
 			// vX: Passive + Active Recon
 			passiveSubs := engine.PassiveDiscovery(parsedMain.Host)
 			targetsMu.Lock()
 			for _, s := range passiveSubs {
-=======
-		if db != nil {
-			db.Update("Discovery: Subdomain Mapping...", 20, 1)
-		}
-
-		// vX: Passive + Active Recon
-		passiveSubs := engine.PassiveDiscovery(parsedMain.Host)
-		for _, s := range passiveSubs {
-			finalTargets = append(finalTargets, "https://"+s+"/")
-		}
-
-		if !*passive {
-			subWords := []string{"www", "api", "dev", "test", "admin"}
-			subs := engine.BruteSubdomains(parsedMain.Host, subWords)
-			for _, s := range subs {
->>>>>>> 8aaf884 (new update)
 				finalTargets = append(finalTargets, "https://"+s+"/")
 			}
 			targetsMu.Unlock()
@@ -442,6 +427,12 @@ func main() {
 			chainedResults := govultEngine.RunKillChain(*target, allResults)
 			allResults = append(allResults, chainedResults...)
 		}
+		allResults = engine.DeduplicateResults(allResults)
+		if *baselineIn != "" {
+			if baseline, err := engine.LoadBaseline(*baselineIn); err == nil {
+				allResults = engine.NewFindingsOnly(allResults, baseline)
+			}
+		}
 
 		engine.GenerateHTML(*target, allResults, *htmlOutput)
 		if *jsonOutput != "" {
@@ -469,6 +460,9 @@ func main() {
 		}
 	} else {
 		color.Green("\n[-] Titan Scan completed. No targets breached.\n")
+	}
+	if *baselineOut != "" {
+		engine.SaveBaseline(*baselineOut, allResults)
 	}
 
 	// vX: Watcher Mode

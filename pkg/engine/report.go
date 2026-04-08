@@ -88,6 +88,8 @@ func GenerateHTML(target string, results []Result, filename string) error {
             <div style="opacity: 0.6; font-size: 13px;">CVSS: {{.CVSS}}</div>
         </div>
         <div class="vuln-body">
+            <span class="label">Confidence:</span>
+            <div style="font-family: monospace; color: #cbd5e1;">{{.Confidence}}</div>
             <span class="label">Target Instance:</span>
             <div style="font-family: monospace; color: #94a3b8;">{{.Target}}</div>
             
@@ -115,7 +117,7 @@ func GenerateHTML(target string, results []Result, filename string) error {
 </body>
 </html>
 `
-	
+
 	funcMap := template.FuncMap{
 		"filterVerified": func(results []Result) int {
 			count := 0

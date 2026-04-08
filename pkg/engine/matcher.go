@@ -12,11 +12,7 @@ import (
 
 // Match implements "AND" logic among top-level matchers.
 // All matchers in the list must be true for the result to be matched.
-<<<<<<< HEAD
-func Match(respBody string, statusCode int, duration float64, matchers []template.Matcher) bool {
-=======
-func Match(respBody string, respHeader http.Header, statusCode int, matchers []template.Matcher) bool {
->>>>>>> 8aaf884 (new update)
+func Match(respBody string, respHeader http.Header, statusCode int, duration float64, matchers []template.Matcher) bool {
 	if len(matchers) == 0 {
 		return false
 	}

@@ -20,6 +20,7 @@ type Result struct {
 	TemplateID      string
 	Target          string
 	Severity        string
+	Confidence      string
 	Matched         bool
 	Status          int
 	Description     string
@@ -159,6 +160,7 @@ func (e *Engine) Run(target string, t *template.Template) ([]Result, error) {
 					res.Exploited = success
 					res.ExploitProof = proof
 				}
+				res.Confidence = CalculateConfidence(*res)
 
 				// vX: OOB Detection (Interactions)
 				if e.OOB != nil && strings.Contains(t.ID, "blind") {
@@ -232,20 +234,15 @@ func (e *Engine) scanSingleWithBody(u, method string, headers map[string]string,
 	body, _ := io.ReadAll(resp.Body)
 	bodyContent := string(body)
 	waf := DetectWAF(resp.Header, resp.StatusCode)
-<<<<<<< HEAD
 	duration := time.Since(start)
+	id := ""
+	severity := ""
+	if t != nil {
+		id = t.ID
+		severity = t.Info.Severity
+	}
 
-	if Match(bodyContent, resp.StatusCode, duration.Seconds(), matchers) {
-		id := ""
-		severity := ""
-		if t != nil {
-			id = t.ID
-			severity = t.Info.Severity
-		}
-=======
-
-	if Match(bodyContent, resp.Header, resp.StatusCode, matchers) {
->>>>>>> 8aaf884 (new update)
+	if Match(bodyContent, resp.Header, resp.StatusCode, duration.Seconds(), matchers) {
 		return &Result{
 			TemplateID: id,
 			Target:     u,

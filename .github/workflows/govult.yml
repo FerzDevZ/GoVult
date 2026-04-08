@@ -26,6 +26,9 @@ jobs:
     - name: Run race tests
       run: go test -race ./...
 
+    - name: Lint templates
+      run: go run ./cmd/template-lint -dir templates
+
     - name: Build GoVult
       run: go build -o govult ./cmd/scanner/main.go
 
